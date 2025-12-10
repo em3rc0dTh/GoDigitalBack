@@ -8,7 +8,7 @@ const AccountSchema = new mongoose.Schema({
   account_number: { type: String, required: true },
   currency: { type: String },
   account_type: { type: String },
-  tenantId: { type: String, index: true },
+  tenantId: { type: mongoose.Schema.Types.ObjectId, ref: "Tenant", index: true },
   tx_count: { type: Number, default: 0 },
   oldest: { type: Date, default: null },
   newest: { type: Date, default: null },

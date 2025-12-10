@@ -13,6 +13,8 @@ router.get("/accounts", AccountController.getAccounts);
 router.post("/accounts", AccountController.createAccount);
 router.put("/accounts/:id", AccountController.updateAccount);
 router.delete("/accounts/:id", AccountController.deleteAccount);
+router.get("/accounts/:id", AccountController.getAccountById);
+router.get("/accounts/tenant/:tenantId", AccountController.getAccountByTenantId);
 
 router.get("/accounts/:id/transactions", TxController.getTransactionsByAccount);
 router.post("/accounts/:id/transactions", TxController.replaceTransactions);

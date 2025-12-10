@@ -133,3 +133,34 @@ export const deleteAccount = async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Error deleting account" });
   }
 };
+
+
+export const getAccountByTenantId = async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(tenantId)) {
+      return res.status(400).json({ error: "Invalid tenant ID" });
+    }
+
+    const docs = await Account.find({ tenantId }).sort({ createdAt: -1 }).lean();
+
+    const normalized = docs.map((d: any) => ({
+      id: d._id.toString(),
+      alias: d.alias,
+      bank_name: d.bank_name,
+      account_holder: d.account_holder,
+      account_number: d.account_number,
+      bank_account_type: d.bank_account_type,
+      currency: d.currency,
+      account_type: d.account_type,
+      tx_count: d.tx_count,
+      oldest: d.oldest,
+      newest: d.newest,
+    }));
+    return res.json(normalized);
+  } catch (err) {
+    console.error("GET /account/:tenantId error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};  

@@ -2,10 +2,11 @@ import mongoose from "mongoose";
 
 const TransactionSchema = new mongoose.Schema(
   {
+    // ------------ MULTI TENANT ------------
     tenantId: {
       type: String,
+      required: true,
       index: true,
-      required: true, // recomendado para multi-tenant
     },
 
     accountId: {
@@ -15,33 +16,42 @@ const TransactionSchema = new mongoose.Schema(
       index: true,
     },
 
+    // ------------ COMMON ------------
+    uuid: {
+      type: String,
+      sparse: true,
+    },
+
     descripcion: {
       type: String,
       trim: true,
       default: "",
     },
 
-    fecha_hora: { type: Date },
-    fecha_hora_raw: { type: String },
-
-    monto: {
-      type: Number,
-      default: 0,
+    fecha_hora: {
+      type: Date,
+      index: true,
     },
+
+    fecha_hora_raw: String,
+
+    monto: Number,
 
     currency: {
       type: String,
       enum: ["PEN", "USD", "EUR", "OTRO"],
-      default: "PEN",
     },
 
-    currency_raw: { type: String },
+    currency_raw: String,
 
-    uuid: {
-      type: String,
-      index: true,
-      sparse: true,
-    },
+    // ------------ BUSINESS (BANCOS EMPRESA) ------------
+    operation_date: String,
+    process_date: String,
+    operation_number: String,
+    movement: String,
+    channel: String,
+    amount: Number,
+    balance: Number,
   },
   { timestamps: true }
 );
