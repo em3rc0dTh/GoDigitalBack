@@ -1,9 +1,17 @@
+// src/controllers/account.ts
 import { Request, Response } from "express";
-import Account from "../models/Account";
 import mongoose from "mongoose";
+import { getAccountModel } from "../models/tenant/Account";
 
 export const getAccounts = async (req: Request, res: Response) => {
   try {
+    // ⭐ CRÍTICO: Usar la conexión del tenant desde req.tenantDB
+    if (!req.tenantDB) {
+      return res.status(500).json({ error: "Tenant connection not available" });
+    }
+
+    const Account = getAccountModel(req.tenantDB);
+
     const docs = await Account.find().sort({ createdAt: -1 }).lean();
 
     const normalized = docs.map((d: any) => ({
@@ -20,16 +28,22 @@ export const getAccounts = async (req: Request, res: Response) => {
       oldest: d.oldest,
       newest: d.newest,
     }));
+
     return res.json(normalized);
   } catch (err) {
-    console.error("GET /account error:", err);
+    console.error("GET /accounts error:", err);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
 export const createAccount = async (req: Request, res: Response) => {
   try {
-    const data = req.body.account ? req.body.account : req.body;
+    if (!req.tenantDB) {
+      return res.status(500).json({ error: "Tenant connection not available" });
+    }
+
+    const Account = getAccountModel(req.tenantDB);
+    const data = req.body.account || req.body;
 
     const doc = await Account.create(data);
 
@@ -38,7 +52,7 @@ export const createAccount = async (req: Request, res: Response) => {
     }
     return res.status(201).json(doc);
   } catch (err) {
-    console.error("POST /account error:", err);
+    console.error("POST /accounts error:", err);
     return res.status(500).json({ ok: false, error: "Error saving account" });
   }
 };
@@ -51,6 +65,11 @@ export const getAccountById = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Invalid account ID" });
     }
 
+    if (!req.tenantDB) {
+      return res.status(500).json({ error: "Tenant connection not available" });
+    }
+
+    const Account = getAccountModel(req.tenantDB);
     const doc = await Account.findById(id).lean();
 
     if (!doc) {
@@ -71,7 +90,7 @@ export const getAccountById = async (req: Request, res: Response) => {
       newest: doc.newest ?? null,
     });
   } catch (err) {
-    console.error("GET /account/:id error:", err);
+    console.error("GET /accounts/:id error:", err);
     return res.status(500).json({ error: "Error getting account" });
   }
 };
@@ -83,6 +102,12 @@ export const updateAccount = async (req: Request, res: Response) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "Invalid account ID" });
     }
+
+    if (!req.tenantDB) {
+      return res.status(500).json({ error: "Tenant connection not available" });
+    }
+
+    const Account = getAccountModel(req.tenantDB);
 
     const updated = await Account.findByIdAndUpdate(
       id,
@@ -109,7 +134,7 @@ export const updateAccount = async (req: Request, res: Response) => {
       createdAt: updated.createdAt,
     });
   } catch (err) {
-    console.error("PUT /account/:id error:", err);
+    console.error("PUT /accounts/:id error:", err);
     return res.status(500).json({ error: "Error updating account" });
   }
 };
@@ -122,6 +147,12 @@ export const deleteAccount = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Invalid account ID" });
     }
 
+    if (!req.tenantDB) {
+      return res.status(500).json({ error: "Tenant connection not available" });
+    }
+
+    const Account = getAccountModel(req.tenantDB);
+
     const deleted = await Account.findByIdAndDelete(id);
     if (!deleted) {
       return res.status(404).json({ error: "Account not found" });
@@ -129,38 +160,7 @@ export const deleteAccount = async (req: Request, res: Response) => {
 
     return res.json({ ok: true, message: "Account deleted successfully" });
   } catch (err) {
-    console.error("DELETE /account/:id error:", err);
+    console.error("DELETE /accounts/:id error:", err);
     return res.status(500).json({ error: "Error deleting account" });
   }
 };
-
-
-export const getAccountByTenantId = async (req: Request, res: Response) => {
-  try {
-    const { tenantId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(tenantId)) {
-      return res.status(400).json({ error: "Invalid tenant ID" });
-    }
-
-    const docs = await Account.find({ tenantId }).sort({ createdAt: -1 }).lean();
-
-    const normalized = docs.map((d: any) => ({
-      id: d._id.toString(),
-      alias: d.alias,
-      bank_name: d.bank_name,
-      account_holder: d.account_holder,
-      account_number: d.account_number,
-      bank_account_type: d.bank_account_type,
-      currency: d.currency,
-      account_type: d.account_type,
-      tx_count: d.tx_count,
-      oldest: d.oldest,
-      newest: d.newest,
-    }));
-    return res.json(normalized);
-  } catch (err) {
-    console.error("GET /account/:tenantId error:", err);
-    return res.status(500).json({ error: "Internal Server Error" });
-  }
-};  
