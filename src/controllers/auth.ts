@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import getUserModel from "../models/system/User";
 import getTenantModel from "../models/system/Tenant";
 import getMemberModel from "../models/system/Member";
+import getTenantDetailModel from "../models/system/TenantDetail";
 import { getTenantDB } from "../config/tenantDb";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
@@ -24,6 +25,7 @@ export const authHandler = async (req: Request, res: Response) => {
     const User = await getUserModel();
     const Tenant = await getTenantModel();
     const Member = await getMemberModel();
+    const TenantDetail = await getTenantDetailModel();
 
     if (action === "login") {
       const user = await User.findOne({ email });
@@ -41,12 +43,30 @@ export const authHandler = async (req: Request, res: Response) => {
         status: "active"
       }).populate("tenantId");
 
-      const workspaces = members.map((m: any) => ({
-        tenantId: m.tenantId._id.toString(),
-        name: m.tenantId.name,
-        role: m.role,
-        dbName: m.tenantId.dbName || null,
-      }));
+      // Build workspaces with their databases
+      const workspaces = await Promise.all(
+        members.map(async (m: any) => {
+          const tenant = m.tenantId;
+
+          // Get all databases for this tenant
+          const details = await TenantDetail.find({
+            _id: { $in: tenant.dbList }
+          }).select('dbName country entityType');
+
+          return {
+            tenantId: tenant._id.toString(),
+            name: tenant.name,
+            role: m.role,
+            databases: details.map((d: any) => ({
+              id: d._id.toString(),
+              dbName: d.dbName,
+              country: d.country,
+              entityType: d.entityType,
+            })),
+            hasDatabase: details.length > 0,
+          };
+        })
+      );
 
       if (workspaces.length === 0) {
         return res.status(403).json({
@@ -103,10 +123,10 @@ export const authHandler = async (req: Request, res: Response) => {
       const tenant = await Tenant.create({
         name: `Workspace of ${fullName}`,
         ownerEmail: email,
-        // dbName is intentionally left empty - will be set during provisioning
+        dbList: [], // Empty array, will be populated during provisioning
       });
 
-      console.log(`✅ Tenant created: ${tenant._id} (database not provisioned yet)`);
+      console.log(`✅ Tenant created: ${tenant._id} (no databases provisioned yet)`);
 
       const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
       const user = await User.create({
@@ -158,7 +178,8 @@ export const authHandler = async (req: Request, res: Response) => {
           tenantId: tenant._id.toString(),
           name: tenant.name,
           role: "superadmin",
-          dbName: null, // Database not provisioned yet
+          databases: [], // No databases yet
+          hasDatabase: false,
         }],
       });
     }
@@ -174,15 +195,11 @@ export const authHandler = async (req: Request, res: Response) => {
   }
 };
 
-async function provisionTenantDatabase(tenantId: string, dbName: string) {
+async function provisionTenantDatabase(detailId: string, dbName: string, tenantId: string) {
   try {
-    // IMPORTANT: getTenantDB will now work because dbName was just set
-    const tenantDB = await getTenantDB(tenantId);
-
-    // Create the collections for the tenant
+    console.log(`🔧 Provisioning physical database: ${dbName}`);
+    const tenantDB = await getTenantDB(tenantId, detailId);
     await tenantDB.createCollection("accounts");
-    await tenantDB.createCollection("transactions");
-
     console.log(`✅ Tenant database provisioned: ${dbName}`);
   } catch (err: any) {
     console.error(`❌ Failed to provision tenant database ${dbName}:`, err.message);
@@ -193,126 +210,150 @@ async function provisionTenantDatabase(tenantId: string, dbName: string) {
 export const provisionDatabaseHandler = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { ...otherParams } = req.body;
+    const detailData = req.body;
 
-    const autoDbName = `GoDigital_${Math.random().toString(36).substring(2, 8)}`;
+    console.log(`📦 Starting provisioning for tenant ${id}`);
+    console.log(`📋 Detail data:`, detailData);
 
-    console.log(`📦 Provisioning request for tenant ${id} with dbName: ${autoDbName}`);
-
-    const Tenant = await getTenantModel();
-    const tenant = await Tenant.findById(id);
-
-    if (!tenant) {
-      return res.status(404).json({ error: "Tenant not found" });
-    }
-
-    if (tenant.dbName) {
+    // Validate required fields
+    if (!detailData.country || !detailData.entityType || !detailData.taxId) {
       return res.status(400).json({
-        error: "Tenant already has a database assigned",
-        existingDbName: tenant.dbName
+        error: "country, entityType, and taxId are required"
       });
     }
 
-    tenant.dbName = autoDbName;
+    // Generate unique database name
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 15);
+    const autoDbName = `GoDigital_${timestamp}_${random}`;
 
-    if (otherParams.country) tenant.country = otherParams.country;
-    if (otherParams.entityType) tenant.entityType = otherParams.entityType;
-    if (otherParams.taxId) tenant.taxId = otherParams.taxId;
-    if (otherParams.businessEmail) tenant.businessEmail = otherParams.businessEmail;
-    if (otherParams.domain) tenant.domain = otherParams.domain;
+    console.log(`🏷️  Generated database name: ${autoDbName}`);
 
-    await tenant.save();
+    // Get models - IMPORTANT: These connect to System DB
+    const Tenant = await getTenantModel();
+    const TenantDetail = await getTenantDetailModel();
 
-    console.log(`✅ Tenant ${id} updated with dbName: ${autoDbName}`);
+    console.log(`✅ Models loaded from System DB`);
 
-    // Provision the database after updating the tenant
-    await provisionTenantDatabase(tenant._id.toString(), autoDbName);
+    // Verificar que el tenant existe
+    const tenant = await Tenant.findById(id);
+
+    if (!tenant) {
+      console.error(`❌ Tenant ${id} not found`);
+      return res.status(404).json({ error: "Tenant not found" });
+    }
+
+    console.log(`✅ Tenant found: ${tenant.name}`);
+
+    // Check if user has permission
+    if (req.tenantId !== id && req.role !== "superadmin") {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    // Check if taxId already exists
+    const existingTaxId = await TenantDetail.findOne({ taxId: detailData.taxId });
+    if (existingTaxId) {
+      console.error(`❌ Tax ID ${detailData.taxId} already exists`);
+      return res.status(409).json({
+        error: "Tax ID already exists",
+        field: "taxId"
+      });
+    }
+
+    console.log(`✅ Tax ID ${detailData.taxId} is unique`);
+
+    // 1️⃣ Create tenant detail record in System DB
+    console.log(`💾 Creating TenantDetail document...`);
+    console.log(`🔍 TenantDetail model DB:`, TenantDetail.db?.name);
+    console.log(`🔍 TenantDetail collection:`, TenantDetail.collection?.name);
+
+    // Crear el documento de TenantDetail (usando SOLO los campos del esquema)
+    const detailDoc = {
+      tenantId: tenant._id,
+      dbName: autoDbName,
+      country: detailData.country,
+      entityType: detailData.entityType,
+      taxId: detailData.taxId,
+      businessEmail: detailData.businessEmail || null,
+      domain: detailData.domain || null,
+      metadata: detailData.metadata || {}
+    };
+
+    console.log(`📦 Document to save:`, detailDoc);
+
+    // CRÍTICO: Usar TenantDetail.create() que usa la conexión correcta
+    const detail = await TenantDetail.create(detailDoc);
+
+    console.log(`✅ TenantDetail created with ID: ${detail._id}`);
+    console.log(`📄 Detail saved to collection:`, detail.collection?.name);
+
+    // Verify it was saved in the correct collection
+    const verification = await TenantDetail.findById(detail._id);
+    if (!verification) {
+      throw new Error("TenantDetail was not saved to database!");
+    }
+    console.log(`✅ Verification: TenantDetail exists in tenantdetails collection`);
+
+    // 2️⃣ Add detail to tenant's dbList
+    // IMPORTANTE: Usar updateOne en lugar de save() para evitar mezclar campos
+    const updateResult = await Tenant.updateOne(
+      { _id: tenant._id },
+      { $push: { dbList: detail._id } }
+    );
+
+    console.log(`✅ Added detail ${detail._id} to Tenant.dbList`);
+    console.log(`📝 Update result:`, updateResult);
+
+    // Verify tenant was updated correctly
+    const updatedTenant = await Tenant.findById(id).lean();
+    console.log(`✅ Tenant dbList now has ${updatedTenant?.dbList.length} databases`);
+
+    // VERIFICACIÓN CRÍTICA: Asegurar que el tenant NO tiene campos de TenantDetail
+    const tenantKeys = Object.keys(updatedTenant || {});
+    const invalidKeys = ['country', 'entityType', 'taxId', 'dbName', 'businessEmail', 'domain'];
+    const contaminatedKeys = tenantKeys.filter(k => invalidKeys.includes(k));
+
+    if (contaminatedKeys.length > 0) {
+      console.error(`⚠️ WARNING: Tenant has invalid fields: ${contaminatedKeys.join(', ')}`);
+      // Limpiar campos contaminados
+      await Tenant.updateOne(
+        { _id: tenant._id },
+        { $unset: Object.fromEntries(contaminatedKeys.map(k => [k, ""])) }
+      );
+      console.log(`✅ Cleaned contaminated fields from Tenant`);
+    }
+
+    // 3️⃣ Provision the physical database
+    await provisionTenantDatabase(detail._id.toString(), autoDbName, tenant._id.toString());
 
     return res.json({
       success: true,
       message: "Database provisioned successfully",
-      tenant: {
-        id: tenant._id.toString(),
-        name: tenant.name,
-        dbName: tenant.dbName, // Should match providedDbName exactly
-        ownerEmail: tenant.ownerEmail,
-        country: tenant.country,
-        entityType: tenant.entityType,
-        taxId: tenant.taxId,
+      detail: {
+        id: detail._id.toString(),
+        tenantId: tenant._id.toString(),
+        dbName: detail.dbName,
+        country: detail.country,
+        entityType: detail.entityType,
+        taxId: detail.taxId,
+        businessEmail: detail.businessEmail,
+        domain: detail.domain
       }
     });
 
   } catch (err: any) {
     console.error("❌ Provisioning error:", err);
+    console.error("❌ Error stack:", err.stack);
+
     if (err.code === 11000) {
-      return res.status(409).json({ error: "Database name already exists" });
+      const field = err.message.includes('taxId') ? 'taxId' : 'dbName';
+      return res.status(409).json({
+        error: `${field} already exists`,
+        field
+      });
     }
     return res.status(500).json({
       error: "An error occurred during provisioning",
-      details: process.env.NODE_ENV === "development" ? err.message : undefined,
-    });
-  }
-};
-
-export const logoutHandler = (req: Request, res: Response) => {
-  res.clearCookie("session_token", { path: "/" });
-  return res.json({ success: true });
-};
-
-export const updateTenantHandler = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const updateData = req.body;
-
-    delete updateData.dbName; // dbName can only be set via provisioning
-    delete updateData._id;
-    delete updateData.createdAt;
-    delete updateData.updatedAt;
-
-    if (Object.keys(updateData).length === 0) {
-      return res.status(400).json({ error: "No valid fields to update" });
-    }
-
-    console.log(`📝 Update request for tenant ${id}:`, updateData);
-
-    const Tenant = await getTenantModel();
-    const tenant = await Tenant.findById(id);
-
-    if (!tenant) {
-      return res.status(404).json({ error: "Tenant not found" });
-    }
-
-    // Verify user has permission to update this tenant
-    if (req.role !== "superadmin" && req.role !== "admin") {
-      return res.status(403).json({ error: "Insufficient permissions" });
-    }
-
-    // Update tenant fields
-    Object.assign(tenant, updateData);
-    await tenant.save();
-
-    console.log(`✅ Tenant ${id} updated successfully`);
-
-    return res.json({
-      success: true,
-      message: "Tenant updated successfully",
-      tenant: {
-        id: tenant._id.toString(),
-        name: tenant.name,
-        dbName: tenant.dbName,
-        ownerEmail: tenant.ownerEmail,
-        country: tenant.country,
-        entityType: tenant.entityType,
-        taxId: tenant.taxId,
-        businessEmail: tenant.businessEmail,
-        domain: tenant.domain,
-      }
-    });
-
-  } catch (err: any) {
-    console.error("❌ Update tenant error:", err);
-    return res.status(500).json({
-      error: "An error occurred while updating tenant",
       details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
@@ -323,6 +364,8 @@ export const getTenantHandler = async (req: Request, res: Response) => {
     const { id } = req.params;
 
     const Tenant = await getTenantModel();
+    const TenantDetail = await getTenantDetailModel();
+
     const tenant = await Tenant.findById(id);
 
     if (!tenant) {
@@ -334,16 +377,26 @@ export const getTenantHandler = async (req: Request, res: Response) => {
       return res.status(403).json({ error: "Access denied" });
     }
 
+    // Get all databases for this tenant
+    const details = await TenantDetail.find({
+      _id: { $in: tenant.dbList }
+    });
+
     return res.json({
       id: tenant._id.toString(),
       name: tenant.name,
-      dbName: tenant.dbName || null,
       ownerEmail: tenant.ownerEmail,
-      country: tenant.country || null,
-      entityType: tenant.entityType || null,
-      taxId: tenant.taxId || null,
-      businessEmail: tenant.businessEmail || null,
-      domain: tenant.domain || null,
+      databases: details.map((d: any) => ({
+        id: d._id.toString(),
+        dbName: d.dbName,
+        country: d.country,
+        entityType: d.entityType,
+        taxId: d.taxId,
+        businessEmail: d.businessEmail,
+        domain: d.domain,
+        createdAt: d.createdAt,
+      })),
+      metadata: tenant.metadata,
       createdAt: tenant.createdAt,
       updatedAt: tenant.updatedAt,
     });
@@ -356,3 +409,264 @@ export const getTenantHandler = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const updateTenantHandler = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    // CRÍTICO: Remove ALL fields that shouldn't be updated
+    // Campos del sistema que nunca se actualizan
+    delete updateData._id;
+    delete updateData.createdAt;
+    delete updateData.updatedAt;
+    delete updateData.__v;
+
+    // dbList se maneja solo a través de provisioning
+    delete updateData.dbList;
+
+    // IMPORTANTE: Campos que pertenecen a TenantDetail, NO a Tenant
+    delete updateData.country;
+    delete updateData.entityType;
+    delete updateData.taxId;
+    delete updateData.dbName;
+    delete updateData.businessEmail;
+    delete updateData.domain;
+
+    // Solo permitir actualizar name y metadata
+    const allowedFields = ['name', 'metadata'];
+    const filteredUpdate: Record<string, any> = {};
+
+    for (const key of allowedFields) {
+      if (updateData[key] !== undefined) {
+        filteredUpdate[key] = updateData[key];
+      }
+    }
+
+    if (Object.keys(filteredUpdate).length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
+
+    console.log(`📝 Update request for tenant ${id}:`, filteredUpdate);
+
+    const Tenant = await getTenantModel();
+    const tenant = await Tenant.findById(id);
+
+    if (!tenant) {
+      return res.status(404).json({ error: "Tenant not found" });
+    }
+
+    // Verify user has permission to update this tenant
+    if (req.tenantId !== id && req.role !== "superadmin" && req.role !== "admin") {
+      return res.status(403).json({ error: "Insufficient permissions" });
+    }
+
+    // Usar updateOne para evitar contaminar el documento
+    const result = await Tenant.updateOne(
+      { _id: id },
+      { $set: filteredUpdate }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: "Tenant not found" });
+    }
+
+    console.log(`✅ Tenant ${id} updated successfully`);
+
+    // Obtener el tenant actualizado (solo campos válidos)
+    const updatedTenant = await Tenant.findById(id)
+      .select('_id name ownerEmail metadata createdAt updatedAt')
+      .lean();
+
+    return res.json({
+      success: true,
+      message: "Tenant updated successfully",
+      tenant: {
+        id: updatedTenant._id.toString(),
+        name: updatedTenant.name,
+        ownerEmail: updatedTenant.ownerEmail,
+        metadata: updatedTenant.metadata,
+      }
+    });
+
+  } catch (err: any) {
+    console.error("❌ Update tenant error:", err);
+    return res.status(500).json({
+      error: "An error occurred while updating tenant",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
+  }
+};
+
+export const getTenantDetailHandler = async (req: Request, res: Response) => {
+  try {
+    const { detailId } = req.params;
+
+    const TenantDetail = await getTenantDetailModel();
+    const detail = await TenantDetail.findById(detailId).populate('tenantId');
+
+    if (!detail) {
+      return res.status(404).json({ error: "TenantDetail not found" });
+    }
+
+    // Verify user has access to this tenant
+    const tenantId = (detail.tenantId as any)._id.toString();
+    if (req.tenantId !== tenantId && req.role !== "superadmin") {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    return res.json({
+      id: detail._id.toString(),
+      tenantId: tenantId,
+      dbName: detail.dbName,
+      country: detail.country,
+      entityType: detail.entityType,
+      taxId: detail.taxId,
+      businessEmail: detail.businessEmail,
+      domain: detail.domain,
+      metadata: detail.metadata,
+      createdAt: detail.createdAt,
+      updatedAt: detail.updatedAt,
+    });
+
+  } catch (err: any) {
+    console.error("❌ Get tenant detail error:", err);
+    return res.status(500).json({
+      error: "An error occurred while fetching tenant detail",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
+  }
+};
+
+export const updateTenantDetailHandler = async (req: Request, res: Response) => {
+  try {
+    const { detailId } = req.params;
+    const updateData = req.body;
+
+    // Remove fields that shouldn't be updated
+    delete updateData._id;
+    delete updateData.tenantId;
+    delete updateData.dbName; // dbName cannot be changed
+    delete updateData.createdAt;
+    delete updateData.updatedAt;
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
+
+    console.log(`📝 Update request for tenant detail ${detailId}:`, updateData);
+
+    const TenantDetail = await getTenantDetailModel();
+    const detail = await TenantDetail.findById(detailId).populate('tenantId');
+
+    if (!detail) {
+      return res.status(404).json({ error: "TenantDetail not found" });
+    }
+
+    // Verify user has permission
+    const tenantId = (detail.tenantId as any)._id.toString();
+    if (req.tenantId !== tenantId && req.role !== "superadmin" && req.role !== "admin") {
+      return res.status(403).json({ error: "Insufficient permissions" });
+    }
+
+    // Check if taxId is being updated and if it already exists
+    if (updateData.taxId && updateData.taxId !== detail.taxId) {
+      const existingTaxId = await TenantDetail.findOne({
+        taxId: updateData.taxId,
+        _id: { $ne: detailId }
+      });
+      if (existingTaxId) {
+        return res.status(409).json({
+          error: "Tax ID already exists",
+          field: "taxId"
+        });
+      }
+    }
+
+    // Update fields
+    Object.assign(detail, updateData);
+    await detail.save();
+
+    console.log(`✅ TenantDetail ${detailId} updated successfully`);
+
+    return res.json({
+      success: true,
+      message: "Tenant detail updated successfully",
+      detail: {
+        id: detail._id.toString(),
+        tenantId: tenantId,
+        dbName: detail.dbName,
+        country: detail.country,
+        entityType: detail.entityType,
+        taxId: detail.taxId,
+        businessEmail: detail.businessEmail,
+        domain: detail.domain,
+      }
+    });
+
+  } catch (err: any) {
+    console.error("❌ Update tenant detail error:", err);
+    if (err.code === 11000) {
+      return res.status(409).json({
+        error: "Tax ID already exists",
+        field: "taxId"
+      });
+    }
+    return res.status(500).json({
+      error: "An error occurred while updating tenant detail",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
+  }
+};
+
+export const logoutHandler = (req: Request, res: Response) => {
+  res.clearCookie("session_token", { path: "/" });
+  return res.json({ success: true });
+};
+
+export async function getTenantsListWithDetails(req: Request, res: Response) {
+  try {
+    const tenantId = req.params.id;
+
+    // Validar que el usuario tenga acceso
+    if (req.role !== "superadmin" && req.tenantId !== tenantId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    const Tenant = await getTenantModel();
+    const TenantDetail = await getTenantDetailModel();
+
+    // Buscar solo el tenant indicado
+    const tenant = await Tenant.findById(tenantId);
+    if (!tenant) {
+      return res.status(404).json({ error: "Tenant not found" });
+    }
+
+    // Traer detalles de ese tenant
+    const details = await TenantDetail.find({ tenantId: tenant._id });
+
+    const result = {
+      tenantId: tenant._id,
+      name: tenant.name,
+      code: tenant.code,
+      role: req.role,
+      details: details.map(d => ({
+        detailId: d._id,
+        dbName: d.dbName,
+        createdAt: d.createdAt,
+        status: d.status ?? "ready",
+        entityType: d.entityType,
+        taxId: d.taxId,
+      }))
+    };
+
+    return res.json(result);
+
+  } catch (err: any) {
+    console.error(`Error getting tenant details for id=${req.params.id}:`, err);
+    return res.status(500).json({
+      error: "Failed to load tenant details",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined
+    });
+  }
+}

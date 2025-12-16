@@ -26,7 +26,11 @@ const MemberSchema = new mongoose.Schema({
         default: "active",
     },
     invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-}, { timestamps: true });
+}, {
+    timestamps: true,
+    strict: true,
+    collection: 'members'
+});
 
 MemberSchema.index({ tenantId: 1, userId: 1 }, { unique: true });
 

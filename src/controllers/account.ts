@@ -2,10 +2,10 @@
 import { Request, Response } from "express";
 import mongoose from "mongoose";
 import { getAccountModel } from "../models/tenant/Account";
+import { getTransactionModel } from "../models/tenant/Transaction";
 
 export const getAccounts = async (req: Request, res: Response) => {
   try {
-    // ⭐ CRÍTICO: Usar la conexión del tenant desde req.tenantDB
     if (!req.tenantDB) {
       return res.status(500).json({ error: "Tenant connection not available" });
     }
@@ -45,12 +45,24 @@ export const createAccount = async (req: Request, res: Response) => {
     const Account = getAccountModel(req.tenantDB);
     const data = req.body.account || req.body;
 
-    const doc = await Account.create(data);
+    const newAccount = new Account(data);
+    const doc = await newAccount.save();
+
+    // 🔥 Crear colección de transacciones por número de cuenta
+    const Transaction = getTransactionModel(
+      req.tenantDB,
+      doc.account_number
+    );
+    await Transaction.createCollection();
 
     if (req.body.account) {
       return res.json({ ok: true, saved: doc });
     }
-    return res.status(201).json(doc);
+
+    return res.status(201).json({
+      ...doc.toObject(),
+      transactionCollection: `Transaction_Raw_${doc.account_number}`,
+    });
   } catch (err) {
     console.error("POST /accounts error:", err);
     return res.status(500).json({ ok: false, error: "Error saving account" });
@@ -132,6 +144,7 @@ export const updateAccount = async (req: Request, res: Response) => {
       oldest: updated.oldest ?? null,
       newest: updated.newest ?? null,
       createdAt: updated.createdAt,
+      updatedAt: updated.updatedAt,
     });
   } catch (err) {
     console.error("PUT /accounts/:id error:", err);

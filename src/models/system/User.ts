@@ -11,7 +11,11 @@ const UserSchema = new mongoose.Schema({
         enum: ["active", "invited", "suspended"],
         default: "active"
     },
-}, { timestamps: true });
+}, {
+    timestamps: true,
+    strict: true,
+    collection: 'users'
+});
 
 export async function getUserModel() {
     const systemDB = await getSystemDB();

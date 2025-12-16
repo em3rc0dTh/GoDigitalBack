@@ -1,3 +1,4 @@
+// src/models/system/TenantDetail.ts
 import mongoose from "mongoose";
 import { getSystemDB, getOrCreateModel } from "../../config/tenantDb";
 
@@ -5,36 +6,46 @@ const TenantDetailSchema = new mongoose.Schema({
     tenantId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Tenant",
-        required: true
+        required: true,
+        index: true
     },
     dbName: {
         type: String,
-        unique: true,
-        sparse: true,
-        required: true
+        required: true,
+        unique: true
     },
     country: {
-        type: String
+        type: String,
+        required: true
     },
     entityType: {
         type: String,
-        enum: ["natural", "legal"]
+        enum: ["natural", "legal"],
+        required: true
     },
     taxId: {
         type: String,
-        unique: true,
-        sparse: true
+        required: true,
+        unique: true
     },
     businessEmail: {
-        type: String
+        type: String,
+        default: null
     },
     domain: {
-        type: String
+        type: String,
+        default: null
     },
     metadata: {
-        type: mongoose.Schema.Types.Mixed
+        type: mongoose.Schema.Types.Mixed,
+        default: {}
     },
-}, { timestamps: true });
+}, {
+    timestamps: true,
+    strict: true,
+});
+
+TenantDetailSchema.index({ tenantId: 1, dbName: 1 });
 
 export async function getTenantDetailModel() {
     const systemDB = await getSystemDB();

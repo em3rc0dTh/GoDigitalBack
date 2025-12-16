@@ -12,7 +12,7 @@ const TransactionSchema = new mongoose.Schema({
     fecha_hora: { type: Date, index: true },
     fecha_hora_raw: String,
     monto: Number,
-    currency: { type: String, enum: ["PEN", "USD", "EUR", "OTRO"] },
+    currency: String,
     currency_raw: String,
     operation_date: String,
     process_date: String,
@@ -23,10 +23,28 @@ const TransactionSchema = new mongoose.Schema({
     balance: Number,
 }, { timestamps: true });
 
-TransactionSchema.index({ accountId: 1, uuid: 1 }, { unique: true, sparse: true });
+TransactionSchema.index(
+    { accountId: 1, uuid: 1 },
+    { unique: true, sparse: true }
+);
 
-export default TransactionSchema;
+/**
+ * Collection: Transaction_Raw_<accountNumber>
+ */
+export function getTransactionModel(
+    connection: mongoose.Connection,
+    accountNumber: string
+) {
+    const sanitized = accountNumber.replace(/[^a-zA-Z0-9]/g, "");
+    const collectionName = `Transaction_Raw_${sanitized}`;
 
-export function getTransactionModel(connection: mongoose.Connection) {
-    return connection.model("Transaction", TransactionSchema);
+    if (connection.models[collectionName]) {
+        return connection.models[collectionName];
+    }
+
+    return connection.model(
+        collectionName,
+        TransactionSchema,
+        collectionName
+    );
 }

@@ -1,4 +1,19 @@
-import mongoose from "mongoose";
+import mongoose, { Document, Model } from "mongoose";
+
+export interface AccountDocument extends Document {
+    alias?: string;
+    bank_name: string;
+    account_holder: string;
+    bank_account_type: string;
+    account_number: string;
+    currency?: string;
+    account_type?: string;
+    tx_count: number;
+    oldest?: Date | null;
+    newest?: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+}
 
 const AccountSchema = new mongoose.Schema({
     alias: { type: String },
@@ -13,8 +28,8 @@ const AccountSchema = new mongoose.Schema({
     newest: { type: Date, default: null },
 }, { timestamps: true });
 
-export default AccountSchema;
-
-export function getAccountModel(connection: mongoose.Connection) {
-    return connection.model("Account", AccountSchema);
+export function getAccountModel(
+    connection: mongoose.Connection
+): Model<AccountDocument> {
+    return connection.model<AccountDocument>("Account", AccountSchema);
 }

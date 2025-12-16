@@ -7,42 +7,35 @@ const TenantSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    dbName: {
-        type: String,
-        unique: true,
-        sparse: true
-    },
     ownerEmail: {
         type: String,
         required: true
     },
-    country: {
-        type: String
-    },
-    entityType: {
-        type: String,
-        enum: ["natural", "legal"]
-    },
-    taxId: {
-        type: String,
-        unique: true,
-        sparse: true
-    },
-    businessEmail: {
-        type: String
-    },
-    domain: {
-        type: String
-    },
-    // Keep metadata for any additional flexible data
+    dbList: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "TenantDetail"
+    }],
     metadata: {
         type: mongoose.Schema.Types.Mixed
     },
-}, { timestamps: true });
+}, {
+    timestamps: true,
+    strict: true,
+});
 
 export async function getTenantModel() {
     const systemDB = await getSystemDB();
-    return getOrCreateModel(systemDB, "Tenant", TenantSchema);
+    const model = getOrCreateModel(systemDB, "Tenant", TenantSchema);
+
+    // Asegurar índices
+    try {
+        await model.syncIndexes();
+        console.log("✅ Tenant indexes synchronized");
+    } catch (err) {
+        console.error("⚠️  Failed to sync Tenant indexes:", err);
+    }
+
+    return model;
 }
 
 export default getTenantModel;

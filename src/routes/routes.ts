@@ -16,6 +16,9 @@ router.use(tenantContext);
 router.get("/tenants/:id", AuthController.getTenantHandler);
 router.put("/tenants/:id", AuthController.updateTenantHandler);
 router.post("/tenants/:id/provision", AuthController.provisionDatabaseHandler);
+router.get("/tenant-details/:detailId", AuthController.getTenantDetailHandler);
+router.put("/tenant-details/:detailId", AuthController.updateTenantDetailHandler);
+router.get("/tenants/details/:id", AuthController.getTenantsListWithDetails);
 
 router.get("/accounts", AccountController.getAccounts);
 router.post("/accounts", AccountController.createAccount);
