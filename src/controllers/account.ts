@@ -177,3 +177,11 @@ export const deleteAccount = async (req: Request, res: Response) => {
     return res.status(500).json({ error: "Error deleting account" });
   }
 };
+
+export async function getAccountInformationById(
+  tenantDB: mongoose.Connection,
+  accountId: mongoose.Types.ObjectId
+) {
+  const Account = getAccountModel(tenantDB);
+  return Account.findById(accountId).lean();
+}

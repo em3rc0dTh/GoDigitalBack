@@ -6,6 +6,7 @@ dotenv.config();
 
 import { connectDB } from "./config/db";
 import routes from "./routes/routes";
+import gmailRoutes from "./routes/gmail"; // ✅ IMPORTANTE
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -19,7 +20,15 @@ app.use(cookieParser());
 
 connectDB();
 
-app.use("/api/", routes);
+/**
+ * 🔓 GMAIL (SIN AUTH, SIN TENANT CONTEXT)
+ */
+app.use("/api/gmail", gmailRoutes);
+
+/**
+ * 🔐 APP NORMAL (CON AUTH + TENANT)
+ */
+app.use("/api", routes);
 
 app.get("/", (_, res) => {
     res.send("GoDigital API is running");

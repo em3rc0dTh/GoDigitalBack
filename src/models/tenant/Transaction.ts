@@ -1,3 +1,4 @@
+// src/models/tenant/Transaction.ts (actualizado)
 import mongoose from "mongoose";
 
 const TransactionSchema = new mongoose.Schema({
@@ -7,9 +8,19 @@ const TransactionSchema = new mongoose.Schema({
         required: true,
         index: true,
     },
-    uuid: { type: String, sparse: true },
-    descripcion: { type: String, trim: true, default: "" },
-    fecha_hora: { type: Date, index: true },
+    uuid: {
+        type: String,
+        sparse: true
+    },
+    descripcion: {
+        type: String,
+        trim: true,
+        default: ""
+    },
+    fecha_hora: {
+        type: Date,
+        index: true
+    },
     fecha_hora_raw: String,
     monto: Number,
     currency: String,
@@ -21,12 +32,35 @@ const TransactionSchema = new mongoose.Schema({
     channel: String,
     amount: Number,
     balance: Number,
-}, { timestamps: true });
+
+    // ⭐ NUEVO: Metadata adicional del parser mejorado
+    metadata: {
+        type: mongoose.Schema.Types.Mixed,
+        default: {}
+        // Contendrá:
+        // {
+        //   yapero: string,
+        //   origen: string,
+        //   nombreBenef: string,
+        //   cuentaBenef: string,
+        //   celularBenef: string,
+        //   comision: string,
+        //   banco: string
+        // }
+    }
+}, {
+    timestamps: true
+});
 
 TransactionSchema.index(
     { accountId: 1, uuid: 1 },
     { unique: true, sparse: true }
 );
+
+// Índice para búsquedas por metadata
+TransactionSchema.index({ "metadata.banco": 1 });
+TransactionSchema.index({ "metadata.yapero": 1 });
+TransactionSchema.index({ "metadata.nombreBenef": 1 });
 
 /**
  * Collection: Transaction_Raw_<accountNumber>

@@ -29,4 +29,9 @@ router.get("/accounts/:id", AccountController.getAccountById);
 router.get("/accounts/:id/transactions", TxController.getTransactionsByAccount);
 router.post("/accounts/:id/transactions", TxController.replaceTransactions);
 
+// 🆕 Rutas de transacciones procesadas
+router.get('/transactions/processed/:tenantDetailId', TxController.getProcessedTransactions);
+router.get('/transactions/detail/:tenantDetailId/:transactionId', TxController.getTransactionDetail);
+router.get('/transactions/raw/:tenantDetailId', TxController.getRawTransactions);
+
 export default router;
