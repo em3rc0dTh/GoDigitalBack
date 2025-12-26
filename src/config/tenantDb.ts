@@ -3,7 +3,7 @@
 import mongoose, { Connection } from "mongoose";
 
 const SYSTEM_DB_URI = process.env.SYSTEM_DB_URI || "mongodb://127.0.0.1:27017/system";
-
+const isDocker = process.env.DOCKER === "true";
 const tenantConnections = new Map<string, Connection>();
 let systemConnection: Connection | null = null;
 
@@ -81,8 +81,11 @@ export async function getTenantDB(tenantId: string, detailId: string): Promise<C
             throw new Error(`TenantDetail ${detailId} has no dbName`);
         }
 
-        const dbUri = `${process.env.MONGO_URI}/${detail.dbName}`;
-        console.log(`🔗 Connecting to: ${dbUri}`);
+        const dbUri = isDocker
+            ? `mongodb://admin:admin123@godigital-mongo:27017/${detail.dbName}?authSource=admin`
+            : `mongodb://127.0.0.1:27017/${detail.dbName}`;
+        // const dbUri = `mongodb://admin:admin123@godigital-mongo:27017/${detail.dbName}?authSource=admin` || `mongodb://127.0.0.1:27017/${detail.dbName}`;
+        // console.log(`🔗 Connecting to: ${dbUri}`);
 
         const connection = mongoose.createConnection(dbUri, {
             maxPoolSize: 5,
