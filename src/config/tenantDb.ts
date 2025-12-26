@@ -81,7 +81,7 @@ export async function getTenantDB(tenantId: string, detailId: string): Promise<C
             throw new Error(`TenantDetail ${detailId} has no dbName`);
         }
 
-        const dbUri = `mongodb://127.0.0.1:27017/${detail.dbName}`;
+        const dbUri = `${process.env.MONGO_URI}/${detail.dbName}`;
         console.log(`🔗 Connecting to: ${dbUri}`);
 
         const connection = mongoose.createConnection(dbUri, {
