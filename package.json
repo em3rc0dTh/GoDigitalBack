@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@google-cloud/pubsub": "^5.2.0",
+    "axios": "^1.13.2",
     "bcrypt": "^6.0.0",
     "cheerio": "^1.1.2",
     "googleapis": "^169.0.0",
