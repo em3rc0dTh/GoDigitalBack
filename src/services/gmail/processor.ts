@@ -85,7 +85,7 @@ export async function processMessage(
   } | null
 ) {
   const SystemEmailRaw = await getSystemEmailRawModel();
-  const API_URL = process.env.API_URL || "http://localhost:8080/extract";
+  const API_URL = process.env.AGENT_URL || "http://localhost:8080/extract";
   // ⛔ Idempotencia por Gmail ID
   const exists = await SystemEmailRaw.findOne({ gmailId });
   if (exists) return;
