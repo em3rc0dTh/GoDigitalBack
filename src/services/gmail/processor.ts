@@ -100,6 +100,10 @@ export async function processMessage(
 
   const from = headers["from"] || "";
   const subject = headers["subject"] || "";
+  // ⛔ FILTRO POR SUBJECT
+  if (!subjectMatches(subject)) {
+    return; // no guardar, no llamar IA, no nada
+  }
   const messageIdHeader = headers["message-id"] || "";
   const receivedAt = new Date(headers["date"] || Date.now());
 
@@ -179,4 +183,14 @@ export async function processMessage(
     processedAt: null,
     error: routing ? null : routingError,
   });
+}
+
+const subject_keywords = [
+  "yape", "transferen", "consumo", "constancia", "terceros",
+  "retiro", "devolucion", "cargo", "abono", "movimiento", "operacion"
+];
+
+function subjectMatches(subject: string): boolean {
+  const s = subject.toLowerCase();
+  return subject_keywords.some(k => s.includes(k));
 }
