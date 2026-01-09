@@ -30,11 +30,15 @@
   },
   "dependencies": {
     "@google-cloud/pubsub": "^5.2.0",
+    "@types/nodemailer": "^7.0.4",
+    "@types/uuid": "^10.0.0",
     "axios": "^1.13.2",
     "bcrypt": "^6.0.0",
     "cheerio": "^1.1.2",
     "googleapis": "^169.0.0",
     "jsonwebtoken": "^9.0.3",
-    "node-cron": "^4.2.1"
+    "node-cron": "^4.2.1",
+    "nodemailer": "^7.0.12",
+    "uuid": "^13.0.0"
   }
 }

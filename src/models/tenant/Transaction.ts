@@ -70,7 +70,7 @@ export function getTransactionModel(
     accountNumber: string
 ) {
     const sanitized = accountNumber.replace(/[^a-zA-Z0-9]/g, "");
-    const collectionName = `Transaction_Raw_${sanitized}`;
+    const collectionName = `Transaction_Raw_Web_${sanitized}`;
 
     if (connection.models[collectionName]) {
         return connection.models[collectionName];

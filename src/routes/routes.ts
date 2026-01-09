@@ -4,14 +4,37 @@ import * as AccountController from "../controllers/account";
 import * as TxController from "../controllers/transaction";
 import * as AuthController from "../controllers/auth";
 import { tenantContext } from "../middleware/tenantContext";
+import * as RolesController from "../controllers/roles";
+import * as PermissionsController from "../controllers/permissions";
 
 const router = Router();
 
-router.post("/users", AuthController.authHandler);
+// Auth Routes
+router.post("/users", AuthController.authHandler); // Legacy support
+router.post("/auth/login", AuthController.loginHandler);
+router.post("/auth/signup", AuthController.signupHandler);
+router.post("/auth/forgot-password", AuthController.forgotPasswordHandler);
+router.post("/auth/reset-password", AuthController.resetPasswordHandler);
+
 router.post("/logout", AuthController.logoutHandler);
 router.get("/logout", AuthController.logoutHandler);
-
+router.post("/verify-email", AuthController.verifyEmailHandler);
+router.post("/auth/resend-verification", AuthController.resendVerificationHandler);
 router.use(tenantContext);
+
+// Roles Management
+router.get("/roles", RolesController.listRoles);
+router.get("/roles/:id", RolesController.getRoleById);
+router.post("/roles", RolesController.createRole);
+router.put("/roles/:id", RolesController.updateRole);
+router.delete("/roles/:id", RolesController.deleteRole);
+
+// Permissions Management
+router.get("/permissions", PermissionsController.listPermissions);
+router.get("/permissions/:id", PermissionsController.getPermissionById);
+router.post("/permissions", PermissionsController.createPermission);
+router.put("/permissions/:id", PermissionsController.updatePermission);
+router.delete("/permissions/:id", PermissionsController.deletePermission);
 
 router.get("/tenants/:id", AuthController.getTenantHandler);
 router.put("/tenants/:id", AuthController.updateTenantHandler);

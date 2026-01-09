@@ -92,6 +92,11 @@ const TransactionRawSchema = new mongoose.Schema(
             ref: "Transaction_Raw_IMAP",
             default: null,
         },
+        webRawId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "TransactionRawAccountWeb",
+            default: null,
+        },
         matchStatus: { type: Boolean, default: false },
         matchAt: { type: Date, default: null },
 

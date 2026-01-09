@@ -61,7 +61,7 @@ export const createAccount = async (req: Request, res: Response) => {
 
     return res.status(201).json({
       ...doc.toObject(),
-      transactionCollection: `Transaction_Raw_${doc.account_number}`,
+      transactionCollection: `Transaction_Raw_Web_${doc.account_number}`,
     });
   } catch (err) {
     console.error("POST /accounts error:", err);

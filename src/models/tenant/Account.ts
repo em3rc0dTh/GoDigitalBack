@@ -18,9 +18,11 @@ export interface AccountDocument extends Document {
 const AccountSchema = new mongoose.Schema({
     alias: { type: String },
     bank_name: { type: String, required: true },
+    entity_id: { type: mongoose.Schema.Types.ObjectId, default: null }, // Ref > system_entity.id (System DB)
     account_holder: { type: String, required: true },
     bank_account_type: { type: String, required: true },
     account_number: { type: String, required: true },
+    business_unit: [{ type: mongoose.Schema.Types.ObjectId, ref: "BusinessUnit" }], // Ref > business_unit.id
     currency: { type: String },
     account_type: { type: String },
     tx_count: { type: Number, default: 0 },
@@ -31,5 +33,5 @@ const AccountSchema = new mongoose.Schema({
 export function getAccountModel(
     connection: mongoose.Connection
 ): Model<AccountDocument> {
-    return connection.model<AccountDocument>("Account", AccountSchema);
+    return connection.model<AccountDocument>("Bank_Account", AccountSchema);
 }

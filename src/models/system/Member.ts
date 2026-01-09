@@ -16,9 +16,14 @@ const MemberSchema = new mongoose.Schema({
         index: true
     },
     role: {
-        type: String,
-        enum: ["superadmin", "admin", "member", "viewer"],
+        type: mongoose.Schema.Types.Mixed, // Changed from [String] to String
+        ref: "Role",
         required: true,
+    },
+    permissionsExtra: { // Added permissions_extra
+        type: mongoose.Schema.Types.Mixed,
+        ref: "Permission",
+        default: [],
     },
     status: {
         type: String,
@@ -26,6 +31,15 @@ const MemberSchema = new mongoose.Schema({
         default: "active",
     },
     invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    isStandard: {
+        type: Boolean,
+        default: false,
+    },
+    resourceId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Resource",
+        default: null,
+    },
 }, {
     timestamps: true,
     strict: true,
