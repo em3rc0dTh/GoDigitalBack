@@ -18,10 +18,10 @@ export function normalizeTransaction(
 ): NormalizedTransaction {
 
     return {
-        amount: tx.amount ?? 0,
+        amount: tx.monto ? parseFloat(tx.monto) : 0,
         currency: tx.currency ?? 'PEN',
-        date: tx.date ? parseDate(tx.date) : new Date(),
-        description: tx.description ?? '',
+        date: tx.fecha ? parseDate(tx.fecha) : new Date(),
+        description: tx.descripcion ?? '',
         bank: detectBank(from),
         confidence: calculateConfidence(tx)
     };
@@ -42,8 +42,8 @@ function detectBank(from: string): string {
 
 function calculateConfidence(tx: ParsedTransaction): number {
     let score = 0;
-    if (tx.amount) score += 0.4;
-    if (tx.date) score += 0.4;
-    if (tx.description) score += 0.2;
+    if (tx.monto) score += 0.4;
+    if (tx.fecha) score += 0.4;
+    if (tx.descripcion) score += 0.2;
     return score;
 }

@@ -7,6 +7,20 @@ import { getAccountModel } from "../models/tenant/Account";
 export const getTransactionsByAccount = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const rawN = Number(req.query.n);
+    const MAX_LIMIT = 100;
+
+    let limit: number | undefined;
+
+    if (Number.isInteger(rawN)) {
+      if (rawN > 0) {
+        limit = Math.min(rawN, MAX_LIMIT);
+      } else if (rawN === 0) {
+        limit = undefined; // no limit
+      }
+    } else {
+      limit = 5; // default
+    }
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "Invalid id format" });
@@ -30,10 +44,14 @@ export const getTransactionsByAccount = async (req: Request, res: Response) => {
       req.tenantDB,
       account.account_number
     );
+    let query = Transaction.find({ accountId: id })
+      .sort({ fecha_hora: -1 });
 
-    const docs = await Transaction.find({ accountId: id })
-      .sort({ fecha_hora: -1 })
-      .lean();
+    if (limit !== undefined) {
+      query = query.limit(limit);
+    }
+
+    const docs = await query.lean();
 
     return res.status(200).json(docs);
   } catch (err) {

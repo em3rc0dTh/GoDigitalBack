@@ -29,7 +29,7 @@ export class EmailMatcher {
     /**
      * Enriquece un email usando las reglas de forwarding
      */
-    async matchEmail(from: string, subject: string): Promise<MatchResult> {
+    async matchEmail(from: string, subject: string, entityId?: mongoose.Types.ObjectId): Promise<MatchResult> {
         const emptyResult: MatchResult = {
             entityId: null,
             bank: null,
@@ -45,15 +45,21 @@ export class EmailMatcher {
                 return emptyResult;
             }
 
-            console.log(`🔍 Matching email: ${emailAddress}`);
+            console.log(`🔍 Matching email: ${emailAddress} ${entityId ? `(Entity: ${entityId})` : ''}`);
 
             // Buscar en configuración de forwarding
             const EmailForwardingConfig = await getEmailForwardingConfigModel();
 
-            const config = await EmailForwardingConfig.findOne({
+            const query: any = {
                 'forwardingData.email': emailAddress.toLowerCase(),
                 active: true
-            });
+            };
+
+            if (entityId) {
+                query.entityId = entityId;
+            }
+
+            const config = await EmailForwardingConfig.findOne(query);
 
             if (!config) {
                 console.log(`⚠️  No forwarding config found for: ${emailAddress}`);

@@ -65,7 +65,7 @@ export async function handleCallback(req: Request, res: Response) {
         const email = profile.data.emailAddress!;
 
         // Configurar watch
-        await setupWatch(oauth2Client, email);
+        await setupWatch(oauth2Client, email, tenantDetailId);
 
         // Redirigir al frontend
         res.redirect(
@@ -144,6 +144,7 @@ async function processEmailInBackground(
         await processHistoryChanges(
             oauth2Client,
             watch.historyId,
+            detail._id // 🆕
         );
 
         console.log(`✅ Processed emails for ${watch.email}`);

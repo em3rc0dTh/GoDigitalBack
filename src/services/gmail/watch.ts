@@ -11,7 +11,8 @@ const TOPIC_NAME = process.env.GMAIL_PUBSUB_TOPIC!;
  */
 export async function setupWatch(
     oauth2Client: OAuth2Client,
-    email: string
+    email: string,
+    tenantDetailId: string
 ) {
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
@@ -32,10 +33,11 @@ export async function setupWatch(
     const GmailWatch = await getGmailWatchModel();
     const tokens = oauth2Client.credentials;
 
-    // 🔒 Garantiza single-watch (por email)
+    // 🔒 Garantiza un watch por tenant
     await GmailWatch.findOneAndUpdate(
-        { email }, // 👈 filtro
+        { tenantDetailId },
         {
+            tenantDetailId,
             email,
             historyId,
             expiration: new Date(Number(expiration)),
@@ -93,7 +95,7 @@ export async function renewExpiredWatches() {
                 refresh_token: watch.refreshToken
             });
 
-            await setupWatch(oauth2Client, watch.email);
+            await setupWatch(oauth2Client, watch.email, watch.tenantDetailId.toString());
             console.log(`✅ Renewed Gmail watch for ${watch.email}`);
         } catch (error: any) {
             console.error(`❌ Failed to renew watch for ${watch.email}`, error);

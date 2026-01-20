@@ -23,7 +23,8 @@ import axios from "axios";
  */
 export async function processHistoryChanges(
   oauth2Client: OAuth2Client,
-  startHistoryId: string
+  startHistoryId: string,
+  entityId?: mongoose.Types.ObjectId // 🆕
 ): Promise<string> {
   const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
@@ -51,7 +52,9 @@ export async function processHistoryChanges(
           gmail,
           msg.id,
           msg.threadId || "",
-          record.id || ""
+          record.id || "",
+          null, // forcedRouting default
+          entityId // 🆕 pass through
         );
       }
     }
@@ -82,7 +85,8 @@ export async function processMessage(
     entityId: mongoose.Types.ObjectId;
     account: mongoose.Types.ObjectId;
     bank?: string | null;
-  } | null
+  } | null,
+  restrictToEntityId?: mongoose.Types.ObjectId // 🆕
 ) {
   const SystemEmailRaw = await getSystemEmailRawModel();
   const API_URL = process.env.AGENT_URL || "http://localhost:8080/extract";
@@ -131,7 +135,7 @@ export async function processMessage(
   // 👉 PRIORIDAD 2: matcher automático
   else {
     const matcher = getEmailMatcher();
-    const matchResult = await matcher.matchEmail(from, subject);
+    const matchResult = await matcher.matchEmail(from, subject, restrictToEntityId); // 🆕
 
     if (matchResult.matched) {
       routing = {

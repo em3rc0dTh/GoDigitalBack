@@ -527,8 +527,9 @@ router.post("/fetch-emails", async (req, res) => {
             });
         }
 
-        // 2. Extraer correo remitente
-        const senderEmail = config.forwardingData[0].email;
+        // 2. Extraer correos remitentes (TODOS)
+        const senders = config.forwardingData.map((r: any) => r.email);
+        const query = `from:(${senders.join(" OR ")})`;
 
         // 3. GmailWatch activo
         const GmailWatch = await getGmailWatchModel();
@@ -549,11 +550,11 @@ router.post("/fetch-emails", async (req, res) => {
 
         const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
-        // 5. LISTAR SOLO CORREOS DE ESE REMITENTE
+        // 5. LISTAR CORREOS DE CUALQUIERA DE LOS REMITENTES
         const response = await gmail.users.messages.list({
             userId: "me",
             maxResults,
-            q: `from:${senderEmail}`, // 🔥 CLAVE
+            q: query, // 🔥 CLAVE: Consultar todos los remitentes
             labelIds: ["INBOX"]
         });
 
@@ -562,7 +563,7 @@ router.post("/fetch-emails", async (req, res) => {
         if (!messages.length) {
             return res.json({
                 success: true,
-                message: `No emails found from ${senderEmail}`,
+                message: `No emails found from ${senders.join(", ")}`,
                 processed: 0
             });
         }
@@ -581,6 +582,8 @@ router.post("/fetch-emails", async (req, res) => {
             config.forwardingData[0].accounts[0]
         ).lean();
 
+        // No forzamos routing fijo, dejamos que el matcher decida basado en el Sender de cada email
+        // Pero restringimos al entityId actual para evitar cruces
         const forcedRouting = {
             entityId: config.entityId,
             account: config.forwardingData[0].accounts[0],
@@ -595,19 +598,20 @@ router.post("/fetch-emails", async (req, res) => {
                 msg.id!,
                 msg.threadId || "",
                 watch.historyId || "",
-                forcedRouting
+                forcedRouting,
+                config.entityId // 🆕 Restringir matchmaking a esta entidad
             );
 
             results.push({
                 gmailId: msg.id,
-                from: senderEmail,
+                from: senders, // Variable removed
                 status: "stored"
             });
         }
 
         res.json({
             success: true,
-            sender: senderEmail,
+            senders: senders,
             total: messages.length,
             results
         });
@@ -677,6 +681,7 @@ router.post("/process-history/:tenantDetailId", async (req: Request, res: Respon
         const newHistoryId = await processHistoryChanges(
             oauth2Client,
             watch.historyId,
+            detail._id // 🆕 Pass entityId
         );
 
         res.json({
