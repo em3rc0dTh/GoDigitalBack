@@ -7,6 +7,8 @@ const UserSchema = new mongoose.Schema({
     passwordHash: { type: String, required: true },
     name: { type: String, required: true }, // Renamed from fullName
     isActive: { type: Boolean, default: true }, // New field
+    googleId: { type: String, unique: true, sparse: true }, // 🆕 Google Login
+    avatar: { type: String, default: null }, // 🆕 Profile Picture
     status: {
         type: String,
         enum: ["active", "invited", "suspended"],

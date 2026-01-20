@@ -12,6 +12,7 @@ const router = Router();
 // Auth Routes
 router.post("/users", AuthController.authHandler); // Legacy support
 router.post("/auth/login", AuthController.loginHandler);
+router.post("/auth/google", AuthController.googleLoginHandler); // 🆕 Google Login
 router.post("/auth/signup", AuthController.signupHandler);
 router.post("/auth/forgot-password", AuthController.forgotPasswordHandler);
 router.post("/auth/reset-password", AuthController.resetPasswordHandler);

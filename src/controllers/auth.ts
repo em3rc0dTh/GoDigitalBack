@@ -10,6 +10,8 @@ import getTenantDetailModel from "../models/system/TenantDetail";
 import { getTenantDB } from "../config/tenantDb";
 import { sendEmail } from "../services/email";
 import getTenantInformationModel from "../models/tenant/TenantInformation";
+import { OAuth2Client } from "google-auth-library"; // 🆕
+import { getOAuth2Client } from "../services/gmail/auth"; // Reuse existing client factory
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 const JWT_EXPIRES_IN = "7d";
@@ -1114,3 +1116,97 @@ export async function getTenantsListWithDetails(req: Request, res: Response) {
     });
   }
 }
+
+// Helper to generate session
+async function createSessionForUser(user: any, res: Response) {
+  const Member = await getMemberModel();
+  const TenantDetail = await getTenantDetailModel();
+  const JWT_SECRET = process.env.JWT_SECRET!;
+  const JWT_EXPIRES_IN = "7d";
+
+  const members = await Member.find({ userId: user._id, status: "active" }).populate("tenantId");
+
+  const workspaces = await Promise.all(
+    members.map(async (m: any) => {
+      const tenant = m.tenantId;
+      const details = await TenantDetail.find({ _id: { $in: tenant.dbList } }).select('dbName country entityType');
+      return {
+        tenantId: tenant._id.toString(),
+        name: tenant.name,
+        role: m.role,
+        databases: details.map((d: any) => ({
+          id: d._id.toString(),
+          dbName: d.dbName,
+          country: d.country,
+          entityType: d.entityType,
+        })),
+        hasDatabase: details.length > 0,
+      };
+    })
+  );
+
+  if (workspaces.length === 0) return res.status(403).json({ error: "No active workspace found for this user" });
+  const primaryWorkspace = workspaces[0];
+
+  const token = jwt.sign(
+    { userId: user._id.toString(), tenantId: primaryWorkspace.tenantId, email: user.email, fullName: user.name, role: primaryWorkspace.role },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN }
+  );
+
+  res.cookie("session_token", token, {
+    httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  return res.json({ success: true, user: { email: user.email, name: user.name, role: primaryWorkspace.role, token, avatar: user.avatar }, workspaces });
+}
+
+// === GOOGLE LOGIN ===
+export const googleLoginHandler = async (req: Request, res: Response) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: "Google token required" });
+
+    const client = getOAuth2Client();
+    // Verify token
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GMAIL_CLIENT_ID, // verify against our client ID
+    });
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) return res.status(400).json({ error: "Invalid Google token" });
+
+    const { email, sub: googleId, picture, name } = payload;
+
+    const User = await getUserModel();
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found. Please sign up first." });
+    }
+
+    // Link Google Account if not linked
+    let updated = false;
+    if (!user.googleId) {
+      user.googleId = googleId;
+      updated = true;
+    }
+    if (!user.avatar && picture) {
+      user.avatar = picture;
+      updated = true;
+    }
+
+    if (updated) await user.save();
+
+    if (!user.isActive) {
+      return res.status(403).json({ error: "User is suspended" });
+    }
+
+    // Create session
+    return createSessionForUser(user, res);
+
+  } catch (err: any) {
+    console.error("Google Login error:", err);
+    return res.status(500).json({ error: "Google Login failed" });
+  }
+};
