@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "src/app.ts",
   "scripts": {
-    "dev": "nodemon",
+    "dev": "nodemon --exec \"node --max-old-space-size=4096 -r ts-node/register\" src/app.ts",
     "build": "tsc",
     "start": "node dist/app.js"
   },
@@ -16,6 +16,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.19.25",
     "@types/node-cron": "^3.0.11",
+    "@types/pdf-parse": "^1.1.5",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -30,6 +31,8 @@
   },
   "dependencies": {
     "@google-cloud/pubsub": "^5.2.0",
+    "@google/generative-ai": "^0.24.1",
+    "@types/multer": "^2.0.0",
     "@types/nodemailer": "^7.0.4",
     "@types/uuid": "^10.0.0",
     "axios": "^1.13.2",
@@ -37,8 +40,11 @@
     "cheerio": "^1.1.2",
     "googleapis": "^169.0.0",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.0.2",
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.12",
+    "openai": "^6.16.0",
+    "pdf-parse": "^2.4.5",
     "uuid": "^13.0.0"
   }
 }

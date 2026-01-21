@@ -6,6 +6,7 @@ import * as AuthController from "../controllers/auth";
 import { tenantContext } from "../middleware/tenantContext";
 import * as RolesController from "../controllers/roles";
 import * as PermissionsController from "../controllers/permissions";
+import statementRoutes from "./statement";
 
 const router = Router();
 
@@ -57,5 +58,8 @@ router.post("/accounts/:id/transactions", TxController.replaceTransactions);
 router.get('/transactions/processed/:tenantDetailId', TxController.getProcessedTransactions);
 router.get('/transactions/detail/:tenantDetailId/:transactionId', TxController.getTransactionDetail);
 router.get('/transactions/raw/:tenantDetailId', TxController.getRawTransactions);
+
+// Statements
+router.use("/statements", statementRoutes);
 
 export default router;
