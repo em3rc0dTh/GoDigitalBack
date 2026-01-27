@@ -45,6 +45,18 @@ export class StatementService {
             throw new Error("Failed to extract text from PDF");
         }
 
+        // Check if file already exists in DB to avoid unnecessary AI processing
+        const TransactionRawPDF = await getTransactionRawPDFModel(tenantId, entityId);
+        const existingDocs = await TransactionRawPDF.find({
+            fileName: fileName,
+            "routing.entityId": new mongoose.Types.ObjectId(entityId)
+        });
+
+        if (existingDocs.length > 0) {
+            console.log(`File ${fileName} already processed. Returning ${existingDocs.length} existing transactions without re-processing.`);
+            return { transactions: existingDocs, isDuplicate: true };
+        }
+
         if (!textContent || textContent.trim().length === 0) {
             throw new Error("PDF content is empty or unreadable");
         }
@@ -92,7 +104,7 @@ export class StatementService {
             accountNumber
         );
 
-        return savedTransactions;
+        return { transactions: savedTransactions, isDuplicate: false };
     }
 
     // Dividir texto en chunks manejables
@@ -282,6 +294,10 @@ ${text}
         if (!detail) throw new Error("Tenant Detail not found");
 
         const TransactionRawPDF = await getTransactionRawPDFModel(tenantId, entityId);
+
+        // Check if file already exists
+
+
         const fileId = new mongoose.Types.ObjectId().toString();
 
         const docs = transactions.map(tx => {

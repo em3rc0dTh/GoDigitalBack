@@ -30,7 +30,7 @@ export const uploadStatement = async (req: Request, res: Response) => {
             return res.status(401).json({ error: "Tenant context required" });
         }
 
-        const result = await statementService.processPdfStatement(
+        const { transactions, isDuplicate } = await statementService.processPdfStatement(
             req.file.buffer,
             req.file.originalname,
             entityId,
@@ -39,9 +39,12 @@ export const uploadStatement = async (req: Request, res: Response) => {
 
         return res.json({
             success: true,
-            message: "Statement processed successfully",
-            count: result.length,
-            fileId: result.length > 0 ? result[0].fileId : null
+            message: isDuplicate
+                ? "This file was processed before. Returning existing transactions."
+                : "Statement processed successfully",
+            count: transactions.length,
+            fileId: transactions.length > 0 ? transactions[0].fileId : null,
+            transactions: transactions
         });
 
     } catch (err: any) {
