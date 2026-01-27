@@ -3,3 +3,6 @@
 /dist/*
 
 .env
+sonar_log.txt
+/sonar_scanner
+/.scannerwork
