@@ -206,15 +206,36 @@ export async function disconnect(req: Request, res: Response) {
             return res.status(404).json({ error: 'No connection found' });
         }
 
-        const oauth2Client = getOAuth2Client();
-        setCredentials(oauth2Client, {
-            access_token: watch.accessToken,
-            refresh_token: watch.refreshToken
+        // Try to stop the watch, but don't fail if token is expired
+        try {
+            const oauth2Client = getOAuth2Client();
+            setCredentials(oauth2Client, {
+                access_token: watch.accessToken,
+                refresh_token: watch.refreshToken
+            });
+
+            await stopWatch(oauth2Client);
+        } catch (stopError: any) {
+            // If token is expired/revoked, that's fine - just log it
+            if (stopError.message?.includes('invalid_grant') || stopError.code === 400) {
+                console.log(`⚠️ Token already expired/revoked for ${watch.email}, skipping API call`);
+            } else {
+                // Re-throw if it's a different error
+                throw stopError;
+            }
+        }
+
+        // Always clean up the database record
+        await GmailWatch.findByIdAndUpdate(watch._id, {
+            status: 'disconnected',
+            accessToken: null,
+            refreshToken: null
         });
 
-        await stopWatch(oauth2Client);
-
-        res.json({ success: true });
+        res.json({
+            success: true,
+            message: 'Gmail disconnected successfully. You can reconnect anytime.'
+        });
     } catch (error) {
         console.error('Error disconnecting Gmail:', error);
         res.status(500).json({ error: 'Failed to disconnect' });

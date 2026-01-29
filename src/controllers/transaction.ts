@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import mongoose from "mongoose";
 import { getTransactionModel } from "../models/tenant/Transaction";
 import { getAccountModel } from "../models/tenant/Account";
+import { recoService } from "../services/reco";
 
 export const getTransactionsByAccount = async (req: Request, res: Response) => {
   try {
@@ -107,11 +108,27 @@ export const replaceTransactions = async (req: Request, res: Response) => {
         .filter(Boolean)
         .sort();
 
+
       await Account.findByIdAndUpdate(id, {
         tx_count: inserted.length,
         oldest: dates[0] || null,
         newest: dates[dates.length - 1] || null,
       });
+
+      // --- RECO Integration ---
+      try {
+        if (req.tenantId && req.tenantDetailId) {
+          await recoService.ingest(
+            req.tenantId,
+            req.tenantDetailId,
+            'WEB',
+            inserted
+          );
+        }
+      } catch (recoError) {
+        console.error("⚠️ RECO Ingestion failed for Web Transactions:", recoError);
+        // Do not fail the request, just log
+      }
     }
 
     return res.status(200).json({
@@ -338,10 +355,11 @@ export async function getRawTransactions(req: Request, res: Response) {
       detail._id.toString()
     );
 
+    // Using the Unified Collection
     const rawTransactions = await tenantConnection
-      .collection('transaction_raw_gmail')
-      .find({ status })
-      .sort({ parsedAt: -1 })
+      .collection('Transaction_Raw') // Unified RECO collection
+      .find({}) // Fetch all for now, status field might be different in V2
+      .sort({ receivedAt: -1 })
       .limit(100)
       .toArray();
 

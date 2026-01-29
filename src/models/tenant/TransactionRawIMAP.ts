@@ -61,6 +61,15 @@ export const TransactionRawIMAPSchema = new mongoose.Schema(
             required: true,
             index: true,
         },
+        processed: {
+            type: Boolean,
+            default: false,
+            index: true
+        },
+        processedAt: {
+            type: Date,
+            default: null
+        }
     },
     {
         collection: "Transaction_Raw_IMAP",

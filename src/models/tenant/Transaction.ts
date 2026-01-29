@@ -37,16 +37,16 @@ const TransactionSchema = new mongoose.Schema({
     metadata: {
         type: mongoose.Schema.Types.Mixed,
         default: {}
-        // Contendrá:
-        // {
-        //   yapero: string,
-        //   origen: string,
-        //   nombreBenef: string,
-        //   cuentaBenef: string,
-        //   celularBenef: string,
-        //   comision: string,
-        //   banco: string
-        // }
+    },
+    // Status
+    processed: {
+        type: Boolean,
+        default: false,
+        index: true
+    },
+    processedAt: {
+        type: Date,
+        default: null
     }
 }, {
     timestamps: true

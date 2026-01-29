@@ -7,6 +7,7 @@ import { tenantContext } from "../middleware/tenantContext";
 import * as RolesController from "../controllers/roles";
 import * as PermissionsController from "../controllers/permissions";
 import statementRoutes from "./statement";
+import reconcileRoutes from "./reconcile";
 
 const router = Router();
 
@@ -61,5 +62,8 @@ router.get('/transactions/raw/:tenantDetailId', TxController.getRawTransactions)
 
 // Statements
 router.use("/statements", statementRoutes);
+
+// Reconcile 
+router.use("/reconcile/:tenantDetailId", reconcileRoutes);
 
 export default router;

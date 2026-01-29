@@ -5,6 +5,7 @@ import { getAccountModel } from "../models/tenant/Account";
 import getTenantDetailModel from "../models/system/TenantDetail";
 import { getTenantDB } from "../config/tenantDb";
 import mongoose from "mongoose";
+import { recoService } from "./reco";
 
 export class StatementService {
     private genAI: GoogleGenerativeAI;
@@ -343,6 +344,15 @@ ${text}
 
         try {
             const result = await TransactionRawPDF.insertMany(docs);
+
+            // Ingest to Master RECO
+            await recoService.ingest(
+                tenantId,
+                entityId,
+                'Statement',
+                docs
+            );
+
             return result;
         } catch (e: any) {
             console.error("Error saving PDF transactions:", e);
