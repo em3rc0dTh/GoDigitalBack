@@ -4,6 +4,7 @@ import { getTransactionRawPDFModel } from "../models/tenant/TransactionRawPDF";
 import { getAccountModel } from "../models/tenant/Account";
 import getTenantDetailModel from "../models/system/TenantDetail";
 import { getTenantDB } from "../config/tenantDb";
+import { findAccountByPartialNumber } from "./accountMatch";
 import mongoose from "mongoose";
 import { recoService } from "./reco";
 
@@ -95,6 +96,34 @@ export class StatementService {
         }
 
         console.log(`Total de transacciones extraídas: ${allTransactions.length}`);
+
+        // 3.5 Validate Accounts against Tenant DB
+        try {
+            const tenantDB = await getTenantDB(tenantId, entityId);
+
+            for (const tx of allTransactions) {
+                // Validate source_account
+                if (tx.source_account) {
+                    const match = await findAccountByPartialNumber(tenantDB, tx.source_account);
+                    if (match) {
+                        console.log(`✅ Statement Source Match: ${tx.source_account} -> ${match.account_number}`);
+                        tx.source_account = match.account_number;
+                    }
+                }
+
+                // Validate destination_account
+                if (tx.destination_account) {
+                    const match = await findAccountByPartialNumber(tenantDB, tx.destination_account);
+                    if (match) {
+                        console.log(`✅ Statement Destination Match: ${tx.destination_account} -> ${match.account_number}`);
+                        tx.destination_account = match.account_number;
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("⚠️ Error validating statement accounts:", err);
+            // Non-critical, continue
+        }
 
         // 4. Save to Database
         const savedTransactions = await this.saveTransactions(

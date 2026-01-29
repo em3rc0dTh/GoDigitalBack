@@ -9,6 +9,7 @@ import { getTransactionModel } from '../models/tenant/Transaction';
 import { getTransactionRawPDFModel } from '../models/tenant/TransactionRawPDF';
 import { TransactionRawIMAPSchema } from '../models/tenant/TransactionRawIMAP';
 import { recoService } from '../services/reco';
+import { findAccountByPartialNumber } from '../services/accountMatch';
 
 export const reconcileAll = async (req: Request, res: Response) => {
     try {
@@ -160,7 +161,40 @@ export const reconcileAll = async (req: Request, res: Response) => {
 
             const imapTransactions = await TransactionRawIMAP.find({ processed: false }).lean();
 
+            // Validate IMAP Accounts
             if (imapTransactions.length > 0) {
+                // Note: transactionVariables structure depends on how IMAP creates them. 
+                // Assuming standard mapping or flat structure if not yet mapped?
+                // TransactionRawIMAP usually stores raw fields. RecoService maps them. 
+                // Let's inspect items briefly. If they lack transactionVariables, we might check raw fields.
+
+                // However, RecoService.ingest expects raw data and handles mapping.
+                // So we should try to match on the RAW fields that `recoService` maps FROM.
+                // RecoService maps: originAccount <- item.transactionVariables?.originAccount || item.source_account
+
+                for (const tx of imapTransactions) {
+                    // Check 'source_account' if it exists in raw
+                    if (tx.source_account) {
+                        const match = await findAccountByPartialNumber(tenantDB, tx.source_account);
+                        if (match) tx.source_account = match.account_number;
+                    }
+                    // Check nested transactionVariables if they exist
+                    if (tx.transactionVariables?.originAccount) {
+                        const match = await findAccountByPartialNumber(tenantDB, tx.transactionVariables.originAccount);
+                        if (match) tx.transactionVariables.originAccount = match.account_number;
+                    }
+
+                    // Check 'destination_account'
+                    if (tx.destination_account) {
+                        const match = await findAccountByPartialNumber(tenantDB, tx.destination_account);
+                        if (match) tx.destination_account = match.account_number;
+                    }
+                    if (tx.transactionVariables?.destinationAccount) {
+                        const match = await findAccountByPartialNumber(tenantDB, tx.transactionVariables.destinationAccount);
+                        if (match) tx.transactionVariables.destinationAccount = match.account_number;
+                    }
+                }
+
                 const result = await recoService.ingest(
                     tenantId,
                     entityId,
