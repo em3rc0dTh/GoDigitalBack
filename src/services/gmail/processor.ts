@@ -4,9 +4,13 @@ import { OAuth2Client } from "google-auth-library";
 import mongoose from "mongoose";
 import getSystemEmailRawModel from "../../models/system/SystemEmailRaw";
 import getGmailWatchModel from "../../models/system/GmailWatch";
+import { getTenantDB } from "../../config/tenantDb";
+import { getAccountModel } from "../../models/tenant/Account";
+import { getTenantDetailModel } from "../../models/system/TenantDetail";
 import { walkParts, ParsedEmailContent, parseHeaders } from "./parser";
 import { getEmailMatcher } from "./matcher";
 import axios from "axios";
+
 /**
  * ============================
  * PROCESADOR GMAIL – FASE 1
@@ -155,6 +159,51 @@ export async function processMessage(
   const transactionVariablesIA = data.transactionVariables || null;
   const transactionTypeIA = data.transactionType || null;
 
+  // 🔍 VALIDACIÓN DE CUENTAS (Layaway / Suffix Match)
+  if (transactionVariablesIA && routing?.entityId) {
+    try {
+      const TenantDetail = await getTenantDetailModel();
+      const detail = await TenantDetail.findById(routing.entityId);
+
+      if (detail) {
+        const tenantId = detail.tenantId.toString();
+        const tenantDB = await getTenantDB(tenantId, routing.entityId.toString());
+        const AccountModel = getAccountModel(tenantDB);
+
+        // Helper para buscar cuenta por sufijo
+        const findAccountBySuffix = async (suffix: string) => {
+          const cleanSuffix = suffix.replace(/\D/g, "");
+          if (cleanSuffix.length < 3) return null; // Evitar falsos positivos con muy pocos dígitos
+          return await AccountModel.findOne({
+            account_number: { $regex: cleanSuffix + "$", $options: "i" }
+          });
+        };
+
+        // 1. Validar Origin Account
+        if (transactionVariablesIA.originAccount) {
+          const match = await findAccountBySuffix(transactionVariablesIA.originAccount);
+          if (match) {
+            console.log(`✅ Origin Account Match: ${transactionVariablesIA.originAccount} -> ${match.account_number}`);
+            transactionVariablesIA.originAccount = match.account_number;
+          }
+        }
+
+        // 2. Validar Destination Account
+        if (transactionVariablesIA.destinationAccount) {
+          const match = await findAccountBySuffix(transactionVariablesIA.destinationAccount);
+          if (match) {
+            console.log(`✅ Destination Account Match: ${transactionVariablesIA.destinationAccount} -> ${match.account_number}`);
+            transactionVariablesIA.destinationAccount = match.account_number;
+          }
+        }
+      }
+    } catch (err) {
+      console.error("❌ Error validating accounts in tenant DB:", err);
+    }
+  }
+
+
+
   await SystemEmailRaw.create({
     gmailId,
     threadId,
@@ -183,7 +232,7 @@ export async function processMessage(
       },
 
     transactionType: transactionTypeIA ? transactionTypeIA : null,
-    processed: data ? true : false,
+    processed: false,
     processedAt: null,
     error: routing ? null : routingError,
   });
