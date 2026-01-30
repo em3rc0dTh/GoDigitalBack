@@ -19,10 +19,7 @@ export const getTransactionsByAccount = async (req: Request, res: Response) => {
       } else if (rawN === 0) {
         limit = undefined; // no limit
       }
-    } else {
-      limit = 5; // default
     }
-
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "Invalid id format" });
     }
@@ -45,14 +42,45 @@ export const getTransactionsByAccount = async (req: Request, res: Response) => {
       req.tenantDB,
       account.account_number
     );
-    let query = Transaction.find({ accountId: id })
-      .sort({ fecha_hora: -1 });
+    let query = Transaction.aggregate([
+      { $match: { accountId: new mongoose.Types.ObjectId(id) } },
+      {
+        $project: {
+          doc: "$$ROOT",
+          effectiveDate: {
+            $cond: [
+              { $ne: ["$operation_date", null] },
+              {
+                $dateFromString: {
+                  dateString: "$operation_date",
+                  format: "%d/%m/%Y"
+                }
+              },
+              {
+                $cond: [
+                  { $ne: ["$process_date", null] },
+                  {
+                    $dateFromString: {
+                      dateString: "$process_date",
+                      format: "%d/%m/%Y"
+                    }
+                  },
+                  "$fecha_hora"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      { $sort: { effectiveDate: -1 } },
+      { $replaceRoot: { newRoot: "$doc" } }
+    ]);
 
     if (limit !== undefined) {
       query = query.limit(limit);
     }
 
-    const docs = await query.lean();
+    const docs = await query.exec();
 
     return res.status(200).json(docs);
   } catch (err) {

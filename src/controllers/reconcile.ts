@@ -11,6 +11,39 @@ import { TransactionRawIMAPSchema } from '../models/tenant/TransactionRawIMAP';
 import { recoService } from '../services/reco';
 import { findAccountByPartialNumber } from '../services/accountMatch';
 
+// Helper to extract numeric amount from string "S/ 1,250.00" or similar
+function extractAmount(text: string): number | null {
+    const match = text.match(/(?:S\/|USD|\$)\s?([\d,]+\.?\d*)/i);
+    if (match && match[1]) {
+        return parseFloat(match[1].replace(/,/g, ''));
+    }
+    return null;
+}
+
+// Helper to extract account number (simple pattern for 13-14 digits or 3-4 blocks)
+function extractAccount(text: string, context: 'origin' | 'destination'): string | null {
+    // Regex for typical format 191-12345678-0-99 or similar
+    // We look for patterns like XXX-XXXXXXXX-X-XX
+    const accounts = text.match(/\d{3,4}-\d{7,8}-\d{1}-\d{2}/g);
+
+    if (!accounts) return null;
+
+    if (context === 'destination') {
+        const destMatch = text.match(/(?:a la cuenta|Hacia la cuenta)[:\s]+(\d{3,4}-\d{7,8}-\d{1}-\d{2})/i);
+        if (destMatch) return destMatch[1];
+        if (accounts.length > 1) return accounts[1];
+        return accounts[0];
+    }
+
+    if (context === 'origin') {
+        const originMatch = text.match(/(?:Desde la cuenta)[:\s]+(\d{3,4}-\d{7,8}-\d{1}-\d{2})/i);
+        if (originMatch) return originMatch[1];
+        if (accounts.length > 0) return accounts[0];
+    }
+
+    return null;
+}
+
 export const reconcileAll = async (req: Request, res: Response) => {
     try {
         const { tenantDetailId } = req.params;
@@ -163,16 +196,53 @@ export const reconcileAll = async (req: Request, res: Response) => {
 
             // Validate IMAP Accounts
             if (imapTransactions.length > 0) {
-                // Note: transactionVariables structure depends on how IMAP creates them. 
-                // Assuming standard mapping or flat structure if not yet mapped?
-                // TransactionRawIMAP usually stores raw fields. RecoService maps them. 
-                // Let's inspect items briefly. If they lack transactionVariables, we might check raw fields.
 
-                // However, RecoService.ingest expects raw data and handles mapping.
-                // So we should try to match on the RAW fields that `recoService` maps FROM.
-                // RecoService maps: originAccount <- item.transactionVariables?.originAccount || item.source_account
-
+                // 🆕 Extraction Step for IMAP (REGEX Based - User Requested)
                 for (const tx of imapTransactions) {
+
+                    // If no structured vars, try extract from body
+                    const hasVars = tx.transactionVariables && (tx.transactionVariables.amount || tx.transactionVariables.originAccount);
+
+                    if (!hasVars) {
+                        const content = tx.text_body || tx.html_body || "";
+                        if (content.length > 10) {
+                            // Extract Amount
+                            const amount = extractAmount(content);
+
+                            // Extract Accounts
+                            const destinationAccount = extractAccount(content, 'destination');
+                            const originAccount = extractAccount(content, 'origin');
+
+                            if (amount !== null) {
+                                console.log(`regex-extract: ${amount} | Or: ${originAccount} | De: ${destinationAccount}`);
+
+                                const newVars = {
+                                    amount: amount,
+                                    currency: content.includes("USD") || content.includes("$") ? "USD" : "PEN",
+                                    operationDate: tx.fetched_at || new Date(),
+                                    operationNumber: null,
+                                    originAccount: originAccount,
+                                    destinationAccount: destinationAccount
+                                };
+
+                                tx.transactionVariables = newVars;
+                                tx.transactionType = "Transferencia";
+
+                                await TransactionRawIMAP.updateOne(
+                                    { _id: tx._id },
+                                    {
+                                        $set: {
+                                            transactionVariables: newVars,
+                                            transactionType: tx.transactionType
+                                        }
+                                    }
+                                );
+                            }
+                        }
+                    }
+
+                    // ... (rest of account matching logic)
+
                     // Check 'source_account' if it exists in raw
                     if (tx.source_account) {
                         const match = await findAccountByPartialNumber(tenantDB, tx.source_account);
