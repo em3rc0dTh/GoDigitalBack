@@ -7,6 +7,7 @@ dotenv.config();
 import { connectDB } from "./config/db";
 import routes from "./routes/routes";
 import gmailRoutes from "./routes/gmail"; // ✅ IMPORTANTE
+import n8nRoutes from "./routes/n8n";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -24,6 +25,10 @@ connectDB();
  * 🔓 GMAIL (SIN AUTH, SIN TENANT CONTEXT)
  */
 app.use("/api/gmail", gmailRoutes);
+
+
+// N8N
+app.use("/api/n8n", n8nRoutes);
 
 /**
  * 🔐 APP NORMAL (CON AUTH + TENANT)

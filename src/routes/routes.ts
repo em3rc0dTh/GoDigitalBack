@@ -8,6 +8,11 @@ import * as RolesController from "../controllers/roles";
 import * as PermissionsController from "../controllers/permissions";
 import statementRoutes from "./statement";
 import reconcileRoutes from "./reconcile";
+import formRoutes from "./formSchema";
+import * as EntityController from "../controllers/entity";
+import * as ProjectController from "../controllers/project";
+import * as PurchaseOrderController from "../controllers/purchaseOrder";
+import * as PaymentRequestController from "../controllers/paymentRequest";
 
 const router = Router();
 
@@ -23,6 +28,9 @@ router.post("/logout", AuthController.logoutHandler);
 router.get("/logout", AuthController.logoutHandler);
 router.post("/verify-email", AuthController.verifyEmailHandler);
 router.post("/auth/resend-verification", AuthController.resendVerificationHandler);
+
+// Forms
+router.use("/forms", formRoutes);
 router.use(tenantContext);
 
 // Roles Management
@@ -54,6 +62,35 @@ router.get("/accounts/:id", AccountController.getAccountById);
 
 router.get("/accounts/:id/transactions", TxController.getTransactionsByAccount);
 router.post("/accounts/:id/transactions", TxController.replaceTransactions);
+
+// Entities
+router.get("/entities/providers", EntityController.getProviders); // Explicit providers endpoint
+router.get("/entities", EntityController.getEntities);
+router.post("/entities", EntityController.createEntity);
+router.get("/entities/:id", EntityController.getEntityById);
+router.put("/entities/:id", EntityController.updateEntity);
+router.delete("/entities/:id", EntityController.deleteEntity);
+
+// Projects
+router.get("/projects", ProjectController.getProjects);
+router.post("/projects", ProjectController.createProject);
+router.get("/projects/:id", ProjectController.getProjectById);
+router.put("/projects/:id", ProjectController.updateProject);
+router.delete("/projects/:id", ProjectController.deleteProject);
+
+// Purchase Orders
+router.get("/purchase-orders", PurchaseOrderController.getPurchaseOrders);
+router.post("/purchase-orders", PurchaseOrderController.createPurchaseOrder);
+router.get("/purchase-orders/:id", PurchaseOrderController.getPurchaseOrderById);
+router.put("/purchase-orders/:id", PurchaseOrderController.updatePurchaseOrder);
+router.delete("/purchase-orders/:id", PurchaseOrderController.deletePurchaseOrder);
+
+// Payment Requests
+router.get("/payment-requests", PaymentRequestController.getPaymentRequests);
+router.post("/payment-requests", PaymentRequestController.createPaymentRequest);
+router.get("/payment-requests/:id", PaymentRequestController.getPaymentRequestById);
+router.put("/payment-requests/:id", PaymentRequestController.updatePaymentRequest);
+router.delete("/payment-requests/:id", PaymentRequestController.deletePaymentRequest);
 
 // 🆕 Rutas de transacciones procesadas
 router.get('/transactions/processed/:tenantDetailId', TxController.getProcessedTransactions);
