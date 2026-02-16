@@ -75,8 +75,12 @@ export const createPaymentRequest = async (req: Request, res: Response) => {
             const Entity = getEntityModel(req.tenantDB);
             const provider = await Entity.findById(doc.provider_id);
 
-            // 1. Send to Creator (Confirmation)
-            if (doc.created_by) {
+            // 1. Send to Creator (Confirmation) OR Project Owner (Action Required)
+            // If creator is also project owner, they should get the Action Required email instead of just confirmation.
+
+            const isCreatorProjectOwner = doc.created_by && project?.projectOwner && doc.created_by.toString() === project.projectOwner.toString();
+
+            if (doc.created_by && !isCreatorProjectOwner) {
                 const creator = await User.findById(doc.created_by);
                 if (creator && creator.email) {
                     await sendEmail(
@@ -98,25 +102,22 @@ export const createPaymentRequest = async (req: Request, res: Response) => {
 
             // 2. Send to Project Owner (Action Required)
             if (project && project.projectOwner) {
-                // Avoid sending duplicate if owner is creator
-                if (!doc.created_by || project.projectOwner.toString() !== doc.created_by.toString()) {
-                    const owner = await User.findById(project.projectOwner);
-                    if (owner && owner.email) {
-                        await sendEmail(
-                            owner.email,
-                            `Action Required: Approve Payment Request - ${project?.name || 'GoDigital'}`,
-                            `
-                            <div style="font-family: Arial, sans-serif; padding: 20px;">
-                                <h2>New Payment Request to Approve</h2>
-                                <p>Hello ${owner.name},</p>
-                                <p>You have a new payment request pending your approval.</p>
-                                ${generateEmailTable(doc, project, provider)}
-                                ${generateEmailButton(doc, '/review')}
-                            </div>
-                            `
-                        );
-                        console.log(`✅ Notification sent to Project Owner: ${owner.email}`);
-                    }
+                const owner = await User.findById(project.projectOwner);
+                if (owner && owner.email) {
+                    await sendEmail(
+                        owner.email,
+                        `Action Required: Approve Payment Request - ${project?.name || 'GoDigital'}`,
+                        `
+                        <div style="font-family: Arial, sans-serif; padding: 20px;">
+                            <h2>New Payment Request to Approve</h2>
+                            <p>Hello ${owner.name},</p>
+                            ${isCreatorProjectOwner ? '<p>You created this request, but it still requires your formal approval.</p>' : '<p>You have a new payment request pending your approval.</p>'}
+                            ${generateEmailTable(doc, project, provider)}
+                            ${generateEmailButton(doc, '/review')}
+                        </div>
+                        `
+                    );
+                    console.log(`✅ Notification sent to Project Owner: ${owner.email}`);
                 }
             }
 
