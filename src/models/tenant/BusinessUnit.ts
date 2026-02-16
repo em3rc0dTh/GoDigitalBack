@@ -6,6 +6,8 @@ export interface BusinessUnitDocument extends Document {
     description: string;
     areas: any[];
     isActive: boolean;
+    admin_id?: mongoose.Types.ObjectId;
+    treasurers?: mongoose.Types.ObjectId[];
     createdAt: Date;
     updatedAt: Date;
 }
@@ -19,7 +21,9 @@ const BusinessUnitSchema = new mongoose.Schema({
     name: { type: String, required: true },
     description: { type: String, default: "" },
     areas: { type: [mongoose.Schema.Types.Mixed], default: [] },
-    isActive: { type: Boolean, default: true }
+    isActive: { type: Boolean, default: true },
+    admin_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    treasurers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
 }, {
     timestamps: true,
     collection: 'business_units'

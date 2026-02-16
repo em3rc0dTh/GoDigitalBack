@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { getPaymentRequestModel } from "../models/tenant/PaymentRequest";
 import { getProjectModel } from "../models/tenant/Project";
 import { getEntityModel } from "../models/tenant/Entity";
+import { getBusinessUnitModel } from "../models/tenant/BusinessUnit";
 import getUserModel from "../models/system/User";
 import { sendEmail } from "../services/email";
 
@@ -14,6 +15,7 @@ export const getPaymentRequests = async (req: Request, res: Response) => {
 
         // Initialize models to ensure they are registered for populate
         getEntityModel(req.tenantDB);
+        getProjectModel(req.tenantDB);
 
         const PaymentRequest = getPaymentRequestModel(req.tenantDB);
 
@@ -21,16 +23,21 @@ export const getPaymentRequests = async (req: Request, res: Response) => {
         if (req.query.status) {
             filter.status = req.query.status;
         }
+        if (req.query.mine === 'true' && req.userId) {
+            filter.created_by = new mongoose.Types.ObjectId(req.userId);
+        }
 
         const docs = await PaymentRequest.find(filter)
             .populate('purchase_order_id')
             .populate('provider_id', 'name')
+            .populate('project_id', 'name') // Populate project name
             .sort({ createdAt: -1 })
             .lean();
 
         const normalized = docs.map((d: any) => ({
             ...d,
-            _id: d._id.toString()
+            _id: d._id.toString(),
+            project: d.project_id?.name || 'N/A', // Map project name safely
         }));
 
         return res.json(normalized);
@@ -97,12 +104,12 @@ export const createPaymentRequest = async (req: Request, res: Response) => {
                     if (owner && owner.email) {
                         await sendEmail(
                             owner.email,
-                            `Action Required: Authorize Payment Request - ${project?.name || 'GoDigital'}`,
+                            `Action Required: Approve Payment Request - ${project?.name || 'GoDigital'}`,
                             `
                             <div style="font-family: Arial, sans-serif; padding: 20px;">
-                                <h2>New Payment Request to Authorize</h2>
+                                <h2>New Payment Request to Approve</h2>
                                 <p>Hello ${owner.name},</p>
-                                <p>You have a new payment request pending your authorization.</p>
+                                <p>You have a new payment request pending your approval.</p>
                                 ${generateEmailTable(doc, project, provider)}
                                 ${generateEmailButton(doc, '/review')}
                             </div>
@@ -153,13 +160,28 @@ function generateEmailTable(doc: any, project: any, provider: any) {
 }
 
 function generateEmailButton(doc: any, urlSuffix: string = '') {
-    const actionText = urlSuffix === '/review' ? 'Review Payment Request' : 'View Payment Request';
-    const backgroundColor = urlSuffix === '/review' ? '#28a745' : '#007bff'; // Green for review, Blue for view
+    let actionText = 'View Payment Request';
+    let backgroundColor = '#007bff'; // Default Blue
+
+    if (urlSuffix === '/review') {
+        actionText = 'Approve Payment Request';
+        backgroundColor = '#28a745'; // Green
+    } else if (urlSuffix === '/authorize') {
+        actionText = 'Authorize Payment Request';
+        backgroundColor = '#17a2b8'; // Teal
+    } else if (urlSuffix === '/pay') {
+        actionText = 'Attend Payment Request';
+        backgroundColor = '#6f42c1'; // Purple
+    }
+
+    // Ensure frontend URL is properly formatted
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
 
     return `
-    <p style="margin-top: 20px;">
-        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment-request/${doc._id}${urlSuffix}" 
-            style="background-color: ${backgroundColor}; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+    <p style="margin-top: 20px; text-align: center;">
+        <a href="${cleanBaseUrl}/payment-request/${doc._id}${urlSuffix}" 
+            style="display: inline-block; background-color: ${backgroundColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-family: Arial, sans-serif;">
             ${actionText}
         </a>
     </p>
@@ -255,5 +277,382 @@ export const deletePaymentRequest = async (req: Request, res: Response) => {
     } catch (err) {
         console.error("DELETE /payment-requests/:id error:", err);
         return res.status(500).json({ error: "Error deleting payment request" });
+    }
+};
+
+export const approvePaymentRequest = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = req.userId;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ error: "Invalid payment request ID" });
+        }
+        if (!req.tenantDB) {
+            return res.status(500).json({ error: "Tenant connection not available" });
+        }
+
+        const PaymentRequest = getPaymentRequestModel(req.tenantDB);
+        const Project = getProjectModel(req.tenantDB);
+        const Entity = getEntityModel(req.tenantDB);
+        const BusinessUnit = getBusinessUnitModel(req.tenantDB);
+        const User = await getUserModel();
+
+        const pr = await PaymentRequest.findById(id);
+        if (!pr) return res.status(404).json({ error: "Payment request not found" });
+
+        // Status Check
+        if (pr.status !== 'pending') {
+            return res.status(400).json({ error: "Payment request must be pending approval. Current status: " + pr.status });
+        }
+
+        const project = await Project.findById(pr.project_id);
+        if (!project) return res.status(404).json({ error: "Project not found" });
+
+        // Authorization Check: Must be Project Owner or Superadmin
+        console.log(`[ApprovePR] User: ${userId}, ProjectOwner: ${project.projectOwner}`);
+
+        // Skip check if user has 'superadmin' role (need to fetch user role from DB or token if available in req)
+        const currentUser = await User.findById(userId);
+        console.log(`[ApprovePR] CurrentUser Role: ${currentUser?.role}`);
+        const isSuperAdmin = currentUser?.role === 'superadmin';
+
+        if (!isSuperAdmin && (!project.projectOwner || project.projectOwner.toString() !== userId)) {
+            return res.status(403).json({
+                error: "Only the Project Owner can approve this request",
+                debug: { userId, projectOwner: project.projectOwner }
+            });
+        }
+
+        // Update Status
+        pr.status = 'approved';
+        pr.approved_by = new mongoose.Types.ObjectId(userId);
+        await pr.save();
+
+        // Notifications
+        try {
+            const provider = await Entity.findById(pr.provider_id);
+            const creator = pr.created_by ? await User.findById(pr.created_by) : null;
+            const approver = await User.findById(userId);
+
+            // Notify Creator
+            if (creator && creator.email) {
+                await sendEmail(
+                    creator.email,
+                    `Payment Request Approved - ${project.name}`,
+                    `
+                    <div style="font-family: Arial, sans-serif; padding: 20px;">
+                        <h2>Payment Request Approved</h2>
+                        <p>Hello ${creator.name},</p>
+                        <p>Your payment request has been approved by the Project Owner (${approver?.name}). It is now pending authorization.</p>
+                        ${generateEmailTable(pr, project, provider)}
+                        ${generateEmailButton(pr, '')}
+                    </div>
+                    `
+                );
+            }
+
+            // Notify Approver (Self)
+            if (approver && approver.email) {
+                await sendEmail(
+                    approver.email,
+                    `Payment Request Approved (Confirmation) - ${project.name}`,
+                    `
+                    <div style="font-family: Arial, sans-serif; padding: 20px;">
+                        <h2>You Approved a Payment Request</h2>
+                        <p>Hello ${approver.name},</p>
+                        <p>You have approved the payment request. It is now awaiting authorization.</p>
+                        ${generateEmailTable(pr, project, provider)}
+                        ${generateEmailButton(pr, '')}
+                    </div>
+                    `
+                );
+            }
+
+            // Notify Project Owner (Next Step: Authorize)
+            if (project && project.projectOwner) {
+                const owner = await User.findById(project.projectOwner);
+                if (owner && owner.email) {
+                    await sendEmail(
+                        owner.email,
+                        `Action Required: Authorize Payment Request - ${project.name}`,
+                        `
+                        <div style="font-family: Arial, sans-serif; padding: 20px;">
+                            <h2>Payment Request Authorization Needed</h2>
+                            <p>Hello ${owner.name},</p>
+                            <p>You have approved a payment request. The next step is to <strong>Authorize</strong> it.</p>
+                            ${generateEmailTable(pr, project, provider)}
+                            ${generateEmailButton(pr, '/authorize')}
+                        </div>
+                        `
+                    );
+                }
+            }
+        } catch (notifyErr) {
+            console.error("Notification error:", notifyErr);
+        }
+
+        return res.json(pr);
+    } catch (err) {
+        console.error("Error approving PR:", err);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+};
+
+export const authorizePaymentRequest = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = req.userId;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ error: "Invalid payment request ID" });
+        }
+        if (!req.tenantDB) {
+            return res.status(500).json({ error: "Tenant connection not available" });
+        }
+
+        const PaymentRequest = getPaymentRequestModel(req.tenantDB);
+        const Project = getProjectModel(req.tenantDB);
+        const Entity = getEntityModel(req.tenantDB);
+        const BusinessUnit = getBusinessUnitModel(req.tenantDB);
+        const User = await getUserModel();
+
+        const pr = await PaymentRequest.findById(id);
+        if (!pr) return res.status(404).json({ error: "Payment request not found" });
+
+        if (pr.status !== 'approved') {
+            return res.status(400).json({ error: "Payment request must be approved first. Current status: " + pr.status });
+        }
+
+        const project = await Project.findById(pr.project_id);
+        if (!project) return res.status(404).json({ error: "Project not found" });
+
+        // const bu = project.business_unit_id ? await BusinessUnit.findById(project.business_unit_id) : null;
+        // if (!bu) return res.status(404).json({ error: "Business Unit not found" });
+
+        // Authorization Check: Must be Project Owner or Superadmin (Simplified Flow)
+        const currentUser = await User.findById(userId);
+        console.log(`[AuthorizePR] CurrentUser Role: ${currentUser?.role}`);
+        const isSuperAdmin = currentUser?.role === 'superadmin';
+
+        if (!isSuperAdmin && (!project.projectOwner || project.projectOwner.toString() !== userId)) {
+            return res.status(403).json({ error: "Only the Project Owner can authorize this request" });
+        }
+
+        // Update Status
+        pr.status = 'authorized';
+        pr.authorized_by = new mongoose.Types.ObjectId(userId);
+        await pr.save();
+
+        // Notifications
+        try {
+            const provider = await Entity.findById(pr.provider_id);
+            const creator = pr.created_by ? await User.findById(pr.created_by) : null;
+            const authorizingAdmin = await User.findById(userId);
+
+            // Notify Creator
+            if (creator && creator.email) {
+                await sendEmail(
+                    creator.email,
+                    `Payment Request Authorized - ${project.name}`,
+                    `
+                    <div style="font-family: Arial, sans-serif; padding: 20px;">
+                        <h2>Payment Request Authorized</h2>
+                        <p>Hello ${creator.name},</p>
+                        <p>Your payment request has been authorized by the Business Unit Admin (${authorizingAdmin?.name}). It is now pending payment.</p>
+                        ${generateEmailTable(pr, project, provider)}
+                        ${generateEmailButton(pr, '')}
+                    </div>
+                    `
+                );
+            }
+
+            // Notify Authorizer (Self - Project Owner)
+            if (authorizingAdmin && authorizingAdmin.email) {
+                await sendEmail(
+                    authorizingAdmin.email,
+                    `Action Required: Attend Payment Request - ${project.name}`,
+                    `
+                    <div style="font-family: Arial, sans-serif; padding: 20px;">
+                        <h2>Payment Request Authorized</h2>
+                        <p>Hello ${authorizingAdmin.name},</p>
+                        <p>You have authorized the payment request. The final step is to <strong>Attend/Pay</strong> it.</p>
+                        ${generateEmailTable(pr, project, provider)}
+                        ${generateEmailButton(pr, '/pay')}
+                    </div>
+                    `
+                );
+            }
+
+        } catch (notifyErr) {
+            console.error("Notification error:", notifyErr);
+        }
+
+        return res.json(pr);
+    } catch (err) {
+        console.error("Error authorizing PR:", err);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+};
+
+export const payPaymentRequest = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { payment_proof } = req.body; // Expecting payment_proof URL/path
+        const userId = req.userId;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ error: "Invalid payment request ID" });
+        }
+        if (!req.tenantDB) {
+            return res.status(500).json({ error: "Tenant connection not available" });
+        }
+
+        const PaymentRequest = getPaymentRequestModel(req.tenantDB);
+        const Project = getProjectModel(req.tenantDB);
+        const Entity = getEntityModel(req.tenantDB);
+        const BusinessUnit = getBusinessUnitModel(req.tenantDB);
+        const User = await getUserModel();
+
+        const pr = await PaymentRequest.findById(id);
+        if (!pr) return res.status(404).json({ error: "Payment request not found" });
+
+        if (pr.status !== 'authorized') {
+            return res.status(400).json({ error: "Payment request must be authorized first. Current status: " + pr.status });
+        }
+
+        const project = await Project.findById(pr.project_id);
+        if (!project) return res.status(404).json({ error: "Project not found" });
+
+        // const bu = project.business_unit_id ? await BusinessUnit.findById(project.business_unit_id) : null;
+        // if (!bu) return res.status(404).json({ error: "Business Unit not found" });
+
+        // Authorization Check: Must be Project Owner or Superadmin (Simplified Flow)
+        const currentUser = await User.findById(userId);
+        console.log(`[PayPR] CurrentUser Role: ${currentUser?.role}`);
+        const isSuperAdmin = currentUser?.role === 'superadmin';
+
+        if (!isSuperAdmin && (!project.projectOwner || project.projectOwner.toString() !== userId)) {
+            return res.status(403).json({ error: "Only the Project Owner can process this payment" });
+        }
+
+        if (!payment_proof) {
+            return res.status(400).json({ error: "Payment proof (voucher) is required to complete payment." });
+        }
+
+        // Update Status
+        pr.status = 'paid';
+        pr.paid_by = new mongoose.Types.ObjectId(userId);
+        pr.payment_proof = payment_proof;
+        await pr.save();
+
+        // Notifications
+        try {
+            const provider = await Entity.findById(pr.provider_id);
+            const creator = pr.created_by ? await User.findById(pr.created_by) : null;
+            const payer = await User.findById(userId);
+
+            // Notify Creator
+            if (creator && creator.email) {
+                await sendEmail(
+                    creator.email,
+                    `Payment Completed - ${project.name}`,
+                    `
+                    <div style="font-family: Arial, sans-serif; padding: 20px;">
+                        <h2>Payment Request Paid</h2>
+                        <p>Hello ${creator.name},</p>
+                        <p>Your payment request has been processed/attended by (${payer?.name}).</p>
+                        <p>Payment Proof: <a href="${payment_proof}">View Voucher</a></p>
+                        ${generateEmailTable(pr, project, provider)}
+                        ${generateEmailButton(pr, '')}
+                    </div>
+                    `
+                );
+            }
+
+            // Notify Treasurer (Self)
+            if (payer && payer.email) {
+                await sendEmail(
+                    payer.email,
+                    `Payment Processed (Confirmation) - ${project.name}`,
+                    `
+                    <div style="font-family: Arial, sans-serif; padding: 20px;">
+                        <h2>You Processed a Payment</h2>
+                        <p>Hello ${payer.name},</p>
+                        <p>You have successfully marked the payment request as paid.</p>
+                        ${generateEmailTable(pr, project, provider)}
+                        ${generateEmailButton(pr, '')}
+                    </div>
+                    `
+                );
+            }
+
+        } catch (notifyErr) {
+            console.error("Notification error:", notifyErr);
+        }
+
+        return res.json(pr);
+    } catch (err) {
+        console.error("Error paying PR:", err);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+};
+
+export const rejectPaymentRequest = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = req.userId;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ error: "Invalid payment request ID" });
+        }
+        if (!req.tenantDB) {
+            return res.status(500).json({ error: "Tenant connection not available" });
+        }
+
+        const PaymentRequest = getPaymentRequestModel(req.tenantDB);
+        const Project = getProjectModel(req.tenantDB);
+        const Entity = getEntityModel(req.tenantDB);
+        const User = await getUserModel();
+
+        const pr = await PaymentRequest.findById(id);
+        if (!pr) return res.status(404).json({ error: "Payment request not found" });
+
+        // Update Status
+        pr.status = 'rejected';
+        pr.rejected_by = new mongoose.Types.ObjectId(userId);
+        await pr.save();
+
+        // Notifications
+        try {
+            const project = await Project.findById(pr.project_id);
+            const provider = await Entity.findById(pr.provider_id);
+            const creator = pr.created_by ? await User.findById(pr.created_by) : null;
+            const rejector = await User.findById(userId);
+
+            // Notify Creator
+            if (creator && creator.email) {
+                await sendEmail(
+                    creator.email,
+                    `Payment Request Rejected - ${project?.name || 'GoDigital'}`,
+                    `
+                    <div style="font-family: Arial, sans-serif; padding: 20px;">
+                        <h2>Payment Request Rejected</h2>
+                        <p>Hello ${creator.name},</p>
+                        <p>Your payment request has been rejected by ${rejector?.name}.</p>
+                        ${generateEmailTable(pr, project, provider)}
+                        ${generateEmailButton(pr, '')}
+                    </div>
+                    `
+                );
+            }
+        } catch (notifyErr) {
+            console.error("Notification error:", notifyErr);
+        }
+
+        return res.json(pr);
+    } catch (err) {
+        console.error("Error rejecting PR:", err);
+        return res.status(500).json({ error: "Internal Server Error" });
     }
 };

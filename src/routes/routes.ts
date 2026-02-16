@@ -13,6 +13,7 @@ import * as EntityController from "../controllers/entity";
 import * as ProjectController from "../controllers/project";
 import * as PurchaseOrderController from "../controllers/purchaseOrder";
 import * as PaymentRequestController from "../controllers/paymentRequest";
+import * as BusinessUnitController from "../controllers/businessUnit";
 
 const router = Router();
 
@@ -86,8 +87,17 @@ router.put("/purchase-orders/:id", PurchaseOrderController.updatePurchaseOrder);
 router.delete("/purchase-orders/:id", PurchaseOrderController.deletePurchaseOrder);
 
 // Payment Requests
+// Payment Requests
 router.get("/payment-requests", PaymentRequestController.getPaymentRequests);
 router.post("/payment-requests", PaymentRequestController.createPaymentRequest);
+
+// ✅ SPECIFIC routes FIRST (before :id routes)
+router.put("/payment-requests/:id/approve", PaymentRequestController.approvePaymentRequest);
+router.put("/payment-requests/:id/authorize", PaymentRequestController.authorizePaymentRequest);
+router.put("/payment-requests/:id/pay", PaymentRequestController.payPaymentRequest);
+router.put("/payment-requests/:id/reject", PaymentRequestController.rejectPaymentRequest);
+
+// ✅ GENERIC routes LAST
 router.get("/payment-requests/:id", PaymentRequestController.getPaymentRequestById);
 router.put("/payment-requests/:id", PaymentRequestController.updatePaymentRequest);
 router.delete("/payment-requests/:id", PaymentRequestController.deletePaymentRequest);
@@ -96,6 +106,13 @@ router.delete("/payment-requests/:id", PaymentRequestController.deletePaymentReq
 router.get('/transactions/processed/:tenantDetailId', TxController.getProcessedTransactions);
 router.get('/transactions/detail/:tenantDetailId/:transactionId', TxController.getTransactionDetail);
 router.get('/transactions/raw/:tenantDetailId', TxController.getRawTransactions);
+
+// Business Units
+router.get("/business-units", BusinessUnitController.getBusinessUnits);
+router.post("/business-units", BusinessUnitController.createBusinessUnit);
+router.get("/business-units/:id", BusinessUnitController.getBusinessUnitById);
+router.put("/business-units/:id", BusinessUnitController.updateBusinessUnit);
+router.delete("/business-units/:id", BusinessUnitController.deleteBusinessUnit);
 
 // Statements
 router.use("/statements", statementRoutes);

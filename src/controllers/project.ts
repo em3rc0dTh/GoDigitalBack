@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import mongoose from "mongoose";
 import { getProjectModel } from "../models/tenant/Project";
+import { getUserModel } from "../models/system/User";
 
 export const getProjects = async (req: Request, res: Response) => {
     try {
@@ -37,6 +38,15 @@ export const createProject = async (req: Request, res: Response) => {
 
         const Project = getProjectModel(req.tenantDB);
         const data = req.body;
+
+        if (data.projectOwner) {
+            const User = await getUserModel();
+            const user = await User.findOne({ email: data.projectOwner });
+            if (!user) {
+                return res.status(404).json({ error: "Project owner not found with that email" });
+            }
+            data.projectOwner = user._id;
+        }
 
         const newProject = new Project(data);
         const doc = await newProject.save();

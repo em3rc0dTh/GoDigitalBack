@@ -14,6 +14,7 @@ const UserSchema = new mongoose.Schema({
         enum: ["active", "invited", "suspended"],
         default: "active"
     },
+    role: { type: String, default: 'standard' }, // Simple role field as fallback or primary
     emailVerified: { type: Boolean, default: false },
     emailVerificationToken: { type: String, default: null },
     resetPasswordToken: { type: String, default: null },

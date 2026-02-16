@@ -53,7 +53,7 @@ export interface TransactionRawPDFDocument extends mongoose.Document {
 const TransactionRawPDFSchema = new mongoose.Schema(
     {
         fileName: { type: String, required: true },
-        fileId: { type: String, required: true, index: true },
+        fileId: { type: String, required: true },
 
         fecha_hora: { type: Date, default: null },
         fecha_hora_raw: { type: String, default: "" },

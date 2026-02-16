@@ -12,7 +12,12 @@ export interface PaymentRequestDocument extends Document {
     date: Date;
     currency: string;
     dueDate?: Date;
-    status: 'pending' | 'approved' | 'paid' | 'rejected';
+    status: 'pending' | 'approved' | 'authorized' | 'paid' | 'rejected';
+    approved_by?: mongoose.Types.ObjectId;
+    authorized_by?: mongoose.Types.ObjectId;
+    rejected_by?: mongoose.Types.ObjectId;
+    paid_by?: mongoose.Types.ObjectId;
+    payment_proof?: string; // URL or path to payment voucher
     notes?: string;
     attachments?: string[]; // URLs or paths
     createdAt: Date;
@@ -33,9 +38,14 @@ const PaymentRequestSchema = new mongoose.Schema({
     dueDate: { type: Date }, // Delivery Deadline
     status: {
         type: String,
-        enum: ['pending', 'approved', 'paid', 'rejected'],
+        enum: ['pending', 'approved', 'authorized', 'paid', 'rejected'],
         default: 'pending'
     },
+    approved_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    authorized_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    rejected_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    paid_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    payment_proof: { type: String },
     notes: { type: String },
     attachments: { type: [String], default: [] }
 }, {

@@ -83,7 +83,7 @@ const TransactionRawSchema = new mongoose.Schema(
         threadId: { type: String, required: false },
         historyId: { type: String, required: false },
 
-        messageId: { type: String, required: false, index: true },
+        messageId: { type: String, required: false },
 
         from: { type: String, required: false }, // Optional for PDF/Web
         subject: { type: String, required: false },
@@ -141,7 +141,7 @@ const TransactionRawSchema = new mongoose.Schema(
         processed: { type: Boolean, default: false },
         processedAt: { type: Date, default: null },
         error: { type: String, default: null },
-        deduplicationHash: { type: String, default: null, index: true },
+        deduplicationHash: { type: String, default: null },
     },
     {
         timestamps: true,
