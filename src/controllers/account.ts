@@ -27,6 +27,7 @@ export const getAccounts = async (req: Request, res: Response) => {
       tx_count: d.tx_count,
       oldest: d.oldest,
       newest: d.newest,
+      assigned_bu: d.assigned_bu || [],
     }));
 
     return res.json(normalized);
@@ -100,6 +101,7 @@ export const getAccountById = async (req: Request, res: Response) => {
       tx_count: doc.tx_count ?? 0,
       oldest: doc.oldest ?? null,
       newest: doc.newest ?? null,
+      assigned_bu: doc.assigned_bu || [],
     });
   } catch (err) {
     console.error("GET /accounts/:id error:", err);
@@ -145,6 +147,7 @@ export const updateAccount = async (req: Request, res: Response) => {
       newest: updated.newest ?? null,
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
+      assigned_bu: updated.assigned_bu || [],
     });
   } catch (err) {
     console.error("PUT /accounts/:id error:", err);
@@ -175,6 +178,47 @@ export const deleteAccount = async (req: Request, res: Response) => {
   } catch (err) {
     console.error("DELETE /accounts/:id error:", err);
     return res.status(500).json({ error: "Error deleting account" });
+  }
+};
+
+export const getAccountsByBusinessUnit = async (req: Request, res: Response) => {
+  try {
+    const { businessUnitId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(businessUnitId)) {
+      return res.status(400).json({ error: "Invalid business unit ID" });
+    }
+
+    if (!req.tenantDB) {
+      return res.status(500).json({ error: "Tenant connection not available" });
+    }
+
+    const Account = getAccountModel(req.tenantDB);
+
+    const docs = await Account.find({
+      assigned_bu: businessUnitId,
+    }).sort({ createdAt: -1 }).lean();
+
+    const normalized = docs.map((d: any) => ({
+      id: d._id.toString(),
+      alias: d.alias,
+      bank_name: d.bank_name,
+      account_holder: d.account_holder,
+      account_number: d.account_number,
+      bank_account_type: d.bank_account_type,
+      currency: d.currency,
+      account_type: d.account_type,
+      createdAt: d.createdAt,
+      tx_count: d.tx_count,
+      oldest: d.oldest,
+      newest: d.newest,
+      assigned_bu: d.assigned_bu || [],
+    }));
+
+    return res.json(normalized);
+  } catch (err) {
+    console.error("GET /accounts/bu/:businessUnitId error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
 

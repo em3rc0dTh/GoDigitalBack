@@ -11,6 +11,7 @@ export interface AccountDocument extends Document {
     tx_count: number;
     oldest?: Date | null;
     newest?: Date | null;
+    assigned_bu?: mongoose.Types.ObjectId[];
     createdAt: Date;
     updatedAt: Date;
 }
@@ -28,6 +29,7 @@ const AccountSchema = new mongoose.Schema({
     tx_count: { type: Number, default: 0 },
     oldest: { type: Date, default: null },
     newest: { type: Date, default: null },
+    assigned_bu: [{ type: mongoose.Schema.Types.ObjectId, ref: "BusinessUnit" }],
 }, { timestamps: true });
 
 export function getAccountModel(

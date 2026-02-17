@@ -22,6 +22,12 @@ export interface PaymentRequestDocument extends Document {
     attachments?: string[]; // URLs or paths
     createdAt: Date;
     updatedAt: Date;
+    debited_bank_account?: mongoose.Types.ObjectId;
+    payment_date?: Date;
+    approval_notes?: string;
+    authorization_notes?: string;
+    payment_notes?: string;
+    rejection_reason?: string;
 }
 
 const PaymentRequestSchema = new mongoose.Schema({
@@ -47,7 +53,13 @@ const PaymentRequestSchema = new mongoose.Schema({
     paid_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     payment_proof: { type: String },
     notes: { type: String },
-    attachments: { type: [String], default: [] }
+    attachments: { type: [String], default: [] },
+    debited_bank_account: { type: mongoose.Schema.Types.ObjectId, ref: 'Bank_Account' },
+    payment_date: { type: Date },
+    approval_notes: { type: String },
+    authorization_notes: { type: String },
+    payment_notes: { type: String },
+    rejection_reason: { type: String }
 }, {
     timestamps: true,
     collection: 'payment_requests'

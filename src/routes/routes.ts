@@ -63,6 +63,7 @@ router.get("/accounts/:id", AccountController.getAccountById);
 
 router.get("/accounts/:id/transactions", TxController.getTransactionsByAccount);
 router.post("/accounts/:id/transactions", TxController.replaceTransactions);
+router.get("/accounts/bu/:businessUnitId", AccountController.getAccountsByBusinessUnit);
 
 // Entities
 router.get("/entities/providers", EntityController.getProviders); // Explicit providers endpoint

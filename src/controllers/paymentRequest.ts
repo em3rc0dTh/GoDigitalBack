@@ -4,6 +4,7 @@ import { getPaymentRequestModel } from "../models/tenant/PaymentRequest";
 import { getProjectModel } from "../models/tenant/Project";
 import { getEntityModel } from "../models/tenant/Entity";
 import { getBusinessUnitModel } from "../models/tenant/BusinessUnit";
+import { getAccountModel } from "../models/tenant/Account";
 import getUserModel from "../models/system/User";
 import { sendEmail } from "../services/email";
 
@@ -15,6 +16,7 @@ export const getPaymentRequests = async (req: Request, res: Response) => {
 
         // Initialize models to ensure they are registered for populate
         getEntityModel(req.tenantDB);
+        getAccountModel(req.tenantDB); // Register Bank_Account model
         getProjectModel(req.tenantDB);
 
         const PaymentRequest = getPaymentRequestModel(req.tenantDB);
@@ -31,6 +33,7 @@ export const getPaymentRequests = async (req: Request, res: Response) => {
             .populate('purchase_order_id')
             .populate('provider_id', 'name')
             .populate('project_id', 'name') // Populate project name
+            .populate('debited_bank_account', 'bank_name account_number currency')
             .sort({ createdAt: -1 })
             .lean();
 
@@ -55,7 +58,6 @@ export const createPaymentRequest = async (req: Request, res: Response) => {
 
         const PaymentRequest = getPaymentRequestModel(req.tenantDB);
         const data = req.body;
-
         // Assign created_by if authenticated
         if (req.userId) {
             data.created_by = req.userId;
@@ -152,7 +154,37 @@ function generateEmailTable(doc: any, project: any, provider: any) {
             <td style="padding: 10px; font-weight: bold;">Status:</td>
             <td style="padding: 10px;">${doc.status}</td>
         </tr>
-            <tr style="border-bottom: 1px solid #eee;">
+        ${doc.status === 'rejected' && doc.rejection_reason ? `
+        <tr style="border-bottom: 1px solid #eee; background-color: #fee;">
+            <td style="padding: 10px; font-weight: bold; color: #dc3545;">Rejection Reason:</td>
+            <td style="padding: 10px; color: #dc3545;">${doc.rejection_reason}</td>
+        </tr>` : ''}
+        ${doc.approval_notes ? `
+        <tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 10px; font-weight: bold;">Approval Notes:</td>
+            <td style="padding: 10px;">${doc.approval_notes}</td>
+        </tr>` : ''}
+        ${doc.authorization_notes ? `
+        <tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 10px; font-weight: bold;">Authorization Notes:</td>
+            <td style="padding: 10px;">${doc.authorization_notes}</td>
+        </tr>` : ''}
+        ${doc.payment_notes ? `
+        <tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 10px; font-weight: bold;">Payment Notes:</td>
+            <td style="padding: 10px;">${doc.payment_notes}</td>
+        </tr>` : ''}
+        ${doc.payment_date ? `
+        <tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 10px; font-weight: bold;">Payment Date:</td>
+            <td style="padding: 10px;">${new Date(doc.payment_date).toLocaleDateString()}</td>
+        </tr>` : ''}
+        ${doc.debited_bank_account && doc.debited_bank_account.bank_name ? `
+        <tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 10px; font-weight: bold;">Debited Account:</td>
+            <td style="padding: 10px;">${doc.debited_bank_account.bank_name} - ${doc.debited_bank_account.account_number} (${doc.debited_bank_account.currency})</td>
+        </tr>` : ''}
+        <tr style="border-bottom: 1px solid #eee;">
             <td style="padding: 10px; font-weight: bold;">Description:</td>
             <td style="padding: 10px;">${doc.notes || 'No description'}</td>
         </tr>
@@ -203,20 +235,29 @@ export const getPaymentRequestById = async (req: Request, res: Response) => {
 
         // Initialize models to ensure they are registered for populate
         getEntityModel(req.tenantDB);
+        getAccountModel(req.tenantDB); // Register Bank_Account model
+        const Project = getProjectModel(req.tenantDB);
+        const User = await getUserModel();
 
         const PaymentRequest = getPaymentRequestModel(req.tenantDB);
         const doc = await PaymentRequest.findById(id)
             .populate('purchase_order_id')
             .populate('provider_id', 'name')
+            .populate('debited_bank_account', 'bank_name account_number currency')
             .lean();
 
         if (!doc) {
             return res.status(404).json({ error: "Payment request not found" });
         }
 
+        const project = await Project.findById(doc.project_id).lean();
+        const created_by = doc.created_by ? await User.findById(doc.created_by).select('name email role').lean() : null;
+
         return res.json({
             ...doc,
-            _id: doc._id.toString()
+            _id: doc._id.toString(),
+            project: project,
+            created_by: created_by
         });
     } catch (err) {
         console.error("GET /payment-requests/:id error:", err);
@@ -328,6 +369,7 @@ export const approvePaymentRequest = async (req: Request, res: Response) => {
         // Update Status
         pr.status = 'approved';
         pr.approved_by = new mongoose.Types.ObjectId(userId);
+        if (req.body.notes) pr.approval_notes = req.body.notes;
         await pr.save();
 
         // Notifications
@@ -415,6 +457,7 @@ export const authorizePaymentRequest = async (req: Request, res: Response) => {
         const PaymentRequest = getPaymentRequestModel(req.tenantDB);
         const Project = getProjectModel(req.tenantDB);
         const Entity = getEntityModel(req.tenantDB);
+        getAccountModel(req.tenantDB);
         const BusinessUnit = getBusinessUnitModel(req.tenantDB);
         const User = await getUserModel();
 
@@ -443,7 +486,17 @@ export const authorizePaymentRequest = async (req: Request, res: Response) => {
         // Update Status
         pr.status = 'authorized';
         pr.authorized_by = new mongoose.Types.ObjectId(userId);
+        if (req.body.notes) pr.authorization_notes = req.body.notes;
+
+        // Capture Payment Date and Bank Account during Authorization
+        const { payment_date, debited_bank_account } = req.body;
+        if (payment_date) pr.payment_date = new Date(payment_date);
+        if (debited_bank_account && mongoose.Types.ObjectId.isValid(debited_bank_account)) {
+            pr.debited_bank_account = new mongoose.Types.ObjectId(debited_bank_account);
+        }
+
         await pr.save();
+        await pr.populate('debited_bank_account');
 
         // Notifications
         try {
@@ -499,7 +552,7 @@ export const authorizePaymentRequest = async (req: Request, res: Response) => {
 export const payPaymentRequest = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { payment_proof } = req.body; // Expecting payment_proof URL/path
+        const { payment_proof, notes } = req.body; // Expecting payment_proof URL/path
         const userId = req.userId;
 
         if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -512,6 +565,7 @@ export const payPaymentRequest = async (req: Request, res: Response) => {
         const PaymentRequest = getPaymentRequestModel(req.tenantDB);
         const Project = getProjectModel(req.tenantDB);
         const Entity = getEntityModel(req.tenantDB);
+        getAccountModel(req.tenantDB);
         const BusinessUnit = getBusinessUnitModel(req.tenantDB);
         const User = await getUserModel();
 
@@ -545,7 +599,9 @@ export const payPaymentRequest = async (req: Request, res: Response) => {
         pr.status = 'paid';
         pr.paid_by = new mongoose.Types.ObjectId(userId);
         pr.payment_proof = payment_proof;
+        if (notes) pr.payment_notes = notes;
         await pr.save();
+        await pr.populate('debited_bank_account');
 
         // Notifications
         try {
@@ -620,8 +676,13 @@ export const rejectPaymentRequest = async (req: Request, res: Response) => {
         if (!pr) return res.status(404).json({ error: "Payment request not found" });
 
         // Update Status
+        const { reason } = req.body;
+        if (!reason) {
+            return res.status(400).json({ error: "Rejection reason is required" });
+        }
         pr.status = 'rejected';
         pr.rejected_by = new mongoose.Types.ObjectId(userId);
+        pr.rejection_reason = reason;
         await pr.save();
 
         // Notifications
