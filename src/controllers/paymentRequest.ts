@@ -28,11 +28,11 @@ export const getPaymentRequests = async (req: Request, res: Response) => {
         if (req.query.mine === 'true' && req.userId) {
             filter.created_by = new mongoose.Types.ObjectId(req.userId);
         }
-
+        const Project = getProjectModel(req.tenantDB);
         const docs = await PaymentRequest.find(filter)
             .populate('purchase_order_id')
             .populate('provider_id', 'name')
-            .populate('project_id', 'name') // Populate project name
+            .populate('project_id') // Populate full project info
             .populate('debited_bank_account', 'bank_name account_number currency')
             .sort({ createdAt: -1 })
             .lean();
@@ -40,7 +40,7 @@ export const getPaymentRequests = async (req: Request, res: Response) => {
         const normalized = docs.map((d: any) => ({
             ...d,
             _id: d._id.toString(),
-            project: d.project_id?.name || 'N/A', // Map project name safely
+            project: d.project_id || null, // Map full project object
         }));
 
         return res.json(normalized);
