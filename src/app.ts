@@ -8,6 +8,7 @@ import { connectDB } from "./config/db";
 import routes from "./routes/routes";
 import gmailRoutes from "./routes/gmail"; // ✅ IMPORTANTE
 import n8nRoutes from "./routes/n8n";
+import odooRoutes from "./routes/odooRoutes";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -29,6 +30,9 @@ app.use("/api/gmail", gmailRoutes);
 
 // N8N
 app.use("/api/n8n", n8nRoutes);
+
+// Odoo
+app.use("/api/odoo", odooRoutes);
 
 /**
  * 🔐 APP NORMAL (CON AUTH + TENANT)
