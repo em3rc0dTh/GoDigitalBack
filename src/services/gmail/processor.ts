@@ -152,8 +152,10 @@ export async function processMessage(
     }
   }
 
+  //TODO: Change Gemini to transformer
   const { data } = await axios.post(API_URL, {
     html: content.html,
+    provider: "n8n"
   });
 
   const transactionVariablesIA = data.transactionVariables || null;

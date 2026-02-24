@@ -3,14 +3,14 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import getTenantDetailModel from '../models/system/TenantDetail';
 import { getSystemEmailRawModel } from '../models/system/SystemEmailRaw';
-import { getTenantDB } from '../config/tenantDb';
+import { getSystemDB, getTenantDB } from '../config/tenantDb';
 import { getAccountModel } from '../models/tenant/Account';
 import { getTransactionModel } from '../models/tenant/Transaction';
 import { getTransactionRawPDFModel } from '../models/tenant/TransactionRawPDF';
 import { TransactionRawIMAPSchema } from '../models/tenant/TransactionRawIMAP';
 import { recoService } from '../services/reco';
 import { findAccountByPartialNumber } from '../services/accountMatch';
-
+import axios from 'axios';
 // Helper to extract numeric amount from string "S/ 1,250.00" or similar
 function extractAmount(text: string): number | null {
     const match = text.match(/(?:S\/|USD|\$)\s?([\d,]+\.?\d*)/i);
@@ -185,14 +185,35 @@ export const reconcileAll = async (req: Request, res: Response) => {
         // 4. IMAP
         try {
             console.log(`🔄 Syncing IMAP for ${entityId}...`);
-            // Check if collection exists or model
-            const TransactionRawIMAP = tenantDB.models.Transaction_Raw_IMAP || tenantDB.model("Transaction_Raw_IMAP", TransactionRawIMAPSchema);
 
-            // IMAP items in the TenantDB are generally scoped to the tenant.
-            // Since we lack specific routing info in the raw IMAP collection, we Fetch ALL items in this tenant context
-            // and rely on RecoService to ingest them into the entity-specific master collection.
+            // Use tenantDetailId (entityId) to find the generic TenantDetail doc
+            const systemDB = await getSystemDB();
+            const IMAP_SERVICE_URL = process.env.IMAP_SERVICE_URL || "http://localhost:8000";
+            if (!detail.dbName) {
+                throw new Error("TenantDetail has no dbName");
+            }
 
-            const imapTransactions = await TransactionRawIMAP.find({ processed: false }).lean();
+            console.log(`🔌 Fetching IMAP from external service for DB: ${detail.dbName}`);
+
+            // Connect to DB just to update state later
+            const targetTenantDB = systemDB.useDb(detail.dbName);
+            const TransactionRawIMAPModel = targetTenantDB.models.Transaction_Raw_IMAP || targetTenantDB.model("Transaction_Raw_IMAP", TransactionRawIMAPSchema);
+
+            // Fetch from the external backend endpoint
+            const response = await axios.get(
+                `${IMAP_SERVICE_URL}/emails/raw/by-tenant-detail/${entityId}`,
+                {
+                    headers: {
+                        "x-database-name": detail.dbName
+                    }
+                }
+            );
+
+            // The external API likely returns the list of transactions in the response body
+            // Let's assume response.data is the array of transactions or response.data.data
+            const imapTransactions = Array.isArray(response.data) ? response.data : (response.data.data || []);
+
+            console.log(`📥 Fetched ${imapTransactions.length} IMAP transactions from external service`);
 
             // Validate IMAP Accounts
             if (imapTransactions.length > 0) {
@@ -228,7 +249,7 @@ export const reconcileAll = async (req: Request, res: Response) => {
                                 tx.transactionVariables = newVars;
                                 tx.transactionType = "Transferencia";
 
-                                await TransactionRawIMAP.updateOne(
+                                await TransactionRawIMAPModel.updateOne(
                                     { _id: tx._id },
                                     {
                                         $set: {
@@ -273,7 +294,7 @@ export const reconcileAll = async (req: Request, res: Response) => {
                 );
 
                 if (result.processedIds && result.processedIds.length > 0) {
-                    await TransactionRawIMAP.updateMany(
+                    await TransactionRawIMAPModel.updateMany(
                         { _id: { $in: result.processedIds } },
                         { $set: { processed: true, processedAt: new Date() } }
                     );

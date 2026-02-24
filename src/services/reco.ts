@@ -85,61 +85,103 @@ export class RecoService {
     }
 
     private async findMatch(Model: any, doc: any) {
-
-        // Helper to check account compatibility
-        const isCompatible = (match: any) => {
-            const incomeAcc = doc.transactionVariables.originAccount;
-            const matchAcc = match.transactionVariables.originAccount;
-
-            if (!incomeAcc || !matchAcc) return true;
-
-            const clean1 = incomeAcc.replace(/X/g, '').trim();
-            const clean2 = matchAcc.replace(/X/g, '').trim();
-
-            if (!clean1 || !clean2) return true;
-
-            const compatible = incomeAcc.endsWith(clean2) || matchAcc.endsWith(clean1);
-            if (!compatible) {
-                console.log(`⚠️ Match found but Account Number mismatch! (${incomeAcc} vs ${matchAcc})`);
-            }
-            return compatible;
+        const cleanAcc = (acc: any) => {
+            if (!acc) return null;
+            return String(acc).replace(/[-\sX]/g, '').trim();
         };
 
-        // Strategy 1: Match by Operation Number (if available)
-        const opNum = doc.transactionVariables.operationNumber;
-        if (opNum) {
-            const query = {
-                "transactionVariables.operationNumber": opNum,
-                "transactionVariables.currency": doc.transactionVariables.currency
+        const docOrigin = cleanAcc(doc.transactionVariables?.originAccount);
+        const docDest = cleanAcc(doc.transactionVariables?.destinationAccount);
+
+        const isAccountCompatible = (matchDoc: any) => {
+            const matchOrigin = cleanAcc(matchDoc.transactionVariables?.originAccount);
+            const matchDest = cleanAcc(matchDoc.transactionVariables?.destinationAccount);
+
+            const checkCompat = (acc1: string | null, acc2: string | null) => {
+                if (!acc1 || !acc2) return true; // Allows merging web transactions with incomplete info
+                return acc1.endsWith(acc2) || acc2.endsWith(acc1);
             };
-            console.log(`🔍 [Reco] DBG Query OpNum:`, JSON.stringify(query));
-            const match = await Model.findOne(query);
-            if (match && isCompatible(match)) return match;
+
+            const originCompat = checkCompat(docOrigin, matchOrigin);
+            const destCompat = checkCompat(docDest, matchDest);
+
+            if (!originCompat || !destCompat) {
+                console.log(`⚠️ Match found but Account mismatch! Origin: ${originCompat}, Dest: ${destCompat}`);
+            }
+            return originCompat && destCompat;
+        };
+
+        const docAmount = doc.transactionVariables?.amount;
+        if (docAmount == null) return null;
+
+        const absAmount = Math.abs(docAmount);
+        const amountsToMatch = [absAmount, -absAmount];
+        const currency = doc.transactionVariables?.currency;
+
+        const date = doc.transactionVariables?.operationDate ? new Date(doc.transactionVariables.operationDate) : new Date(doc.receivedAt);
+        const startDate = new Date(date);
+        startDate.setDate(date.getDate() - 3);
+        const endDate = new Date(date);
+        endDate.setDate(date.getDate() + 3);
+
+        // Check for Idempotency (Same Source & ExternalId)
+        if (doc.externalId) {
+            const exactSameSourceDoc = await Model.findOne({
+                "linkedSources.source": doc.source,
+                "linkedSources.externalId": doc.externalId
+            });
+            if (exactSameSourceDoc) {
+                console.log(`🔗 Idempotency Match found for ${doc.source}`);
+                return exactSameSourceDoc;
+            }
         }
 
-        // Strategy 2: Match by Amount + Date Window + Currency
-        const amount = doc.transactionVariables.amount;
-        const currency = doc.transactionVariables.currency;
-        const date = new Date(doc.receivedAt);
+        // Find cross-source candidates
+        const query = {
+            "transactionVariables.amount": { $in: amountsToMatch },
+            "transactionVariables.currency": currency,
+            "linkedSources.source": { $ne: doc.source }, // Only match distinct sources
+            $or: [
+                { "transactionVariables.operationDate": { $gte: startDate, $lte: endDate } },
+                { "receivedAt": { $gte: startDate, $lte: endDate } }
+            ]
+        };
 
-        if (amount) {
-            const startDate = new Date(date);
-            startDate.setDate(date.getDate() - 3);
-            const endDate = new Date(date);
-            endDate.setDate(date.getDate() + 3);
+        const candidates = await Model.find(query).lean();
 
-            const amountsToMatch = [amount, -amount];
+        // Find best match based on closest date
+        let bestMatch = null;
+        let smallestTimeDiff = Infinity;
+        const docOpNum = doc.transactionVariables?.operationNumber ? String(doc.transactionVariables.operationNumber).trim() : null;
 
-            const query = {
-                "transactionVariables.amount": { $in: amountsToMatch },
-                "transactionVariables.currency": currency,
-                "receivedAt": { $gte: startDate, $lte: endDate },
-                "linkedSources.source": { $ne: doc.source }
-            };
-            console.log(`🔍 [Reco] DBG Query Amount:`, JSON.stringify(query));
+        for (const candidate of candidates) {
+            if (!isAccountCompatible(candidate)) continue;
 
-            const match = await Model.findOne(query);
-            if (match && isCompatible(match)) return match;
+            const candOpNum = candidate.transactionVariables?.operationNumber ? String(candidate.transactionVariables.operationNumber).trim() : null;
+
+            if (docOpNum && candOpNum) {
+                const cleanDocOp = docOpNum.replace(/[^0-9]/g, '');
+                const cleanCandOp = candOpNum.replace(/[^0-9]/g, '');
+                // If neither is WEB and numbers conflict strictly, skip. If WEB, tolerate different OP num formats.
+                if (cleanDocOp && cleanCandOp && cleanDocOp !== cleanCandOp && !cleanDocOp.includes(cleanCandOp) && !cleanCandOp.includes(cleanDocOp)) {
+                    if (doc.source !== 'WEB' && !candidate.linkedSources.some((s: any) => s.source === 'WEB')) {
+                        continue;
+                    }
+                }
+            }
+
+            const candDate = candidate.transactionVariables?.operationDate ? new Date(candidate.transactionVariables.operationDate) : new Date(candidate.receivedAt);
+            const timeDiff = Math.abs(candDate.getTime() - date.getTime());
+
+            // Pick the closest date
+            if (timeDiff < smallestTimeDiff) {
+                smallestTimeDiff = timeDiff;
+                bestMatch = candidate;
+            }
+        }
+
+        if (bestMatch) {
+            return await Model.findById(bestMatch._id);
         }
 
         return null;
@@ -151,6 +193,26 @@ export class RecoService {
     private mapToMaster(item: any, source: string): any {
         const now = new Date();
         const receivedAt = item.fecha_hora ? new Date(item.fecha_hora) : (item.receivedAt ? new Date(item.receivedAt) : now);
+
+        const rawAmount = item.transactionVariables?.amount ?? item.amount ?? item.monto ?? null;
+
+        let originAcc = item.transactionVariables?.originAccount || null;
+        let destAcc = item.transactionVariables?.destinationAccount || item.destination_account || null;
+
+        // For WEB, source_account is the known monitored account. 
+        if (source === 'WEB' && item.source_account) {
+            if (rawAmount < 0) {
+                // We sent money -> Our account is origin
+                originAcc = item.source_account;
+            } else if (rawAmount > 0) {
+                // We received money -> Our account is destination
+                destAcc = item.source_account;
+            } else {
+                originAcc = item.source_account;
+            }
+        } else if (!originAcc) {
+            originAcc = item.source_account || null;
+        }
 
         return {
             source: source,
@@ -176,9 +238,9 @@ export class RecoService {
 
             // Transaction Variables
             transactionVariables: {
-                originAccount: item.transactionVariables?.originAccount || item.source_account || null,
-                destinationAccount: item.transactionVariables?.destinationAccount || item.destination_account || null,
-                amount: item.transactionVariables?.amount ?? item.amount ?? item.monto ?? null,
+                originAccount: originAcc,
+                destinationAccount: destAcc,
+                amount: rawAmount,
                 currency: (item.transactionVariables?.currency || item.currency || 'PEN').trim(),
                 operationDate: item.transactionVariables?.operationDate ? new Date(item.transactionVariables.operationDate) : receivedAt,
                 operationNumber: (item.transactionVariables?.operationNumber || item.operation_number) ? String(item.transactionVariables?.operationNumber || item.operation_number).trim() : null,
