@@ -63,6 +63,16 @@ export const createPaymentRequest = async (req: Request, res: Response) => {
             data.created_by = req.userId;
         }
 
+        if (data.provider_id && !mongoose.Types.ObjectId.isValid(data.provider_id)) {
+            const Entity = getEntityModel(req.tenantDB);
+            const provider = await Entity.findOne({ name: new RegExp('^' + data.provider_id + '$', 'i') });
+            if (provider) {
+                data.provider_id = provider._id;
+            } else {
+                return res.status(404).json({ error: "Provider not found with that name" });
+            }
+        }
+
         const newPR = new PaymentRequest(data);
         const doc = await newPR.save();
 
@@ -278,10 +288,21 @@ export const updatePaymentRequest = async (req: Request, res: Response) => {
         }
 
         const PaymentRequest = getPaymentRequestModel(req.tenantDB);
+        const data = req.body;
+
+        if (data.provider_id && !mongoose.Types.ObjectId.isValid(data.provider_id)) {
+            const Entity = getEntityModel(req.tenantDB);
+            const provider = await Entity.findOne({ name: new RegExp('^' + data.provider_id + '$', 'i') });
+            if (provider) {
+                data.provider_id = provider._id;
+            } else {
+                return res.status(404).json({ error: "Provider not found with that name" });
+            }
+        }
 
         const updated = await PaymentRequest.findByIdAndUpdate(
             id,
-            { $set: req.body },
+            { $set: data },
             { new: true, runValidators: true }
         );
 

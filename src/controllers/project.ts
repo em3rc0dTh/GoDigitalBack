@@ -39,11 +39,24 @@ export const createProject = async (req: Request, res: Response) => {
         const Project = getProjectModel(req.tenantDB);
         const data = req.body;
 
+        if (data.endDate === "") {
+            data.endDate = null;
+        }
+
         if (data.projectOwner) {
             const User = await getUserModel();
-            const user = await User.findOne({ email: data.projectOwner });
+            let query: any;
+            if (mongoose.Types.ObjectId.isValid(data.projectOwner)) {
+                query = { _id: data.projectOwner };
+            } else if (String(data.projectOwner).includes("@")) {
+                query = { email: data.projectOwner };
+            } else {
+                query = { name: new RegExp('^' + data.projectOwner + '$', 'i') };
+            }
+
+            const user = await User.findOne(query);
             if (!user) {
-                return res.status(404).json({ error: "Project owner not found with that email" });
+                return res.status(404).json({ error: "Project owner not found with that id, email or name" });
             }
             data.projectOwner = user._id;
         }
@@ -100,10 +113,33 @@ export const updateProject = async (req: Request, res: Response) => {
         }
 
         const Project = getProjectModel(req.tenantDB);
+        const data = req.body;
+
+        if (data.endDate === "") {
+            data.endDate = null;
+        }
+
+        if (data.projectOwner) {
+            const User = await getUserModel();
+            let query: any;
+            if (mongoose.Types.ObjectId.isValid(data.projectOwner)) {
+                query = { _id: data.projectOwner };
+            } else if (String(data.projectOwner).includes("@")) {
+                query = { email: data.projectOwner };
+            } else {
+                query = { name: new RegExp('^' + data.projectOwner + '$', 'i') };
+            }
+
+            const user = await User.findOne(query);
+            if (!user) {
+                return res.status(404).json({ error: "Project owner not found with that id, email or name" });
+            }
+            data.projectOwner = user._id;
+        }
 
         const updated = await Project.findByIdAndUpdate(
             id,
-            { $set: req.body },
+            { $set: data },
             { new: true, runValidators: true }
         );
 

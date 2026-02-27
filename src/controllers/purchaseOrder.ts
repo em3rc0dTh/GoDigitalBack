@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import mongoose from "mongoose";
 import { getPurchaseOrderModel } from "../models/tenant/PurchaseOrder";
 import { getProjectModel } from "../models/tenant/Project";
+import { getEntityModel } from "../models/tenant/Entity";
 import getUserModel from "../models/system/User";
 import { sendEmail } from "../services/email";
 
@@ -51,6 +52,16 @@ export const createPurchaseOrder = async (req: Request, res: Response) => {
         // Assign created_by if authenticated
         if (req.userId) {
             data.created_by = req.userId;
+        }
+
+        if (data.provider_id && !mongoose.Types.ObjectId.isValid(data.provider_id)) {
+            const Entity = getEntityModel(req.tenantDB);
+            const provider = await Entity.findOne({ name: new RegExp('^' + data.provider_id + '$', 'i') });
+            if (provider) {
+                data.provider_id = provider._id;
+            } else {
+                return res.status(404).json({ error: "Provider not found with that name" });
+            }
         }
 
         const newPO = new PurchaseOrder(data);
@@ -191,10 +202,21 @@ export const updatePurchaseOrder = async (req: Request, res: Response) => {
         }
 
         const PurchaseOrder = getPurchaseOrderModel(req.tenantDB);
+        const data = req.body;
+
+        if (data.provider_id && !mongoose.Types.ObjectId.isValid(data.provider_id)) {
+            const Entity = getEntityModel(req.tenantDB);
+            const provider = await Entity.findOne({ name: new RegExp('^' + data.provider_id + '$', 'i') });
+            if (provider) {
+                data.provider_id = provider._id;
+            } else {
+                return res.status(404).json({ error: "Provider not found with that name" });
+            }
+        }
 
         const updated = await PurchaseOrder.findByIdAndUpdate(
             id,
-            { $set: req.body },
+            { $set: data },
             { new: true, runValidators: true }
         );
 

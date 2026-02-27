@@ -47,7 +47,10 @@ const EntitySchema = new mongoose.Schema({
         required: true
     },
     business_type: { type: String },
-    vendor_type: { type: String },
+    vendor_type: {
+        type: String,
+        enum: ['provider', 'supplier', 'vendor']
+    },
     identifiers: {
         tax_id: { type: String },
         national_id: { type: String },
