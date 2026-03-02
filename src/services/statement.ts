@@ -163,7 +163,8 @@ export class StatementService {
 
     private async extractTransactionsWithAI(
         text: string,
-        includeAccountNumber: boolean = false
+        includeAccountNumber: boolean = false,
+        retriesLeft: number = 3
     ): Promise<any> {
         const accountNumberInstruction = includeAccountNumber
             ? '"accountNumber": "extracted account number or null",'
@@ -239,6 +240,7 @@ ${text}
 
 
         try {
+            console.log("Enviando a Gemini texto de longitud:", text.length, "Muestra:", text.substring(0, 200).replace(/\n/g, " "));
             const model = this.genAI.getGenerativeModel({
                 model: "gemini-2.0-flash",
                 generationConfig: { responseMimeType: "application/json" }
@@ -255,37 +257,65 @@ ${text}
             let parsed: any;
             try {
                 parsed = JSON.parse(content);
+
+                let accountNumber: string | null = null;
+                let transactions: any[] = [];
+
+                if (Array.isArray(parsed)) {
+                    // Si Gemini detectó múltiples cuentas y devolvió un array de statements
+                    console.log(`Gemini devolvió un array. Iterando sobre ${parsed.length} cuentas...`);
+                    parsed.forEach(acc => {
+                        if (acc.accountNumber && !accountNumber) {
+                            accountNumber = acc.accountNumber; // Tomamos el primer número de cuenta como general
+                        }
+                        if (Array.isArray(acc.transactions)) {
+                            transactions = transactions.concat(acc.transactions);
+                        }
+                    });
+                } else {
+                    // Si devolvió un objeto directo (comportamiento esperado)
+                    accountNumber = parsed.accountNumber ?? null;
+                    transactions = Array.isArray(parsed.transactions) ? parsed.transactions : [];
+                }
+
+                console.log("Transacciones totales parseadas:", transactions.length);
+
+                if (transactions.length === 0) {
+                    const fs = require('fs');
+                    fs.writeFileSync('statement_debug.txt', `--- INPUT TEXT ---\n${text}\n\n--- OUTPUT CONTENT ---\n${content}\n`);
+                    console.log("⚠️ Zero transactions parsed. Creado el archivo 'statement_debug.txt' localmente en la raíz para analizar el texto que falló.");
+                }
+
+                // 2️⃣ Generar tabla Markdown localmente
+                const markdown_table = this.generateMarkdownTable(transactions);
+
+                return {
+                    accountNumber: accountNumber,
+                    markdown_table: markdown_table,
+                    transactions: transactions
+                };
+
             } catch (e) {
                 console.error("❌ Invalid JSON returned by Gemini:");
                 console.error(content);
                 throw new Error("Gemini returned invalid JSON");
             }
 
-            const transactions = Array.isArray(parsed.transactions) ? parsed.transactions : [];
-
-            // 2️⃣ Generar tabla Markdown localmente
-            const markdown_table = this.generateMarkdownTable(transactions);
-
-            return {
-                accountNumber: parsed.accountNumber ?? null,
-                markdown_table: markdown_table,
-                transactions: transactions
-            };
-
         } catch (err: any) {
             console.error("Gemini API Error:", err);
 
             // Fallback para errores de rate limiting
             if (err?.message?.includes("429") || err?.status === 429) {
-                console.warn("⚠️ Rate limit alcanzado. Esperando 5 segundos antes de reintentar...");
-                await new Promise(resolve => setTimeout(resolve, 5000));
+                if (retriesLeft > 0) {
+                    // Exponential backoff: 15s, 30s, 45s
+                    const delay = [45000, 30000, 15000][retriesLeft - 1] || 15000;
+                    console.warn(`⚠️ Rate limit alcanzado. Esperando ${delay / 1000} segundos antes de reintentar... (Intentos restantes: ${retriesLeft})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
 
-                // Reintentar UNA vez
-                try {
-                    return await this.extractTransactionsWithAI(text, includeAccountNumber);
-                } catch (retryErr) {
-                    console.error("Reintento falló. Usando fallback de mock data.");
-                    throw new Error("Error al extraer transacciones con AI");
+                    return await this.extractTransactionsWithAI(text, includeAccountNumber, retriesLeft - 1);
+                } else {
+                    console.error("Reintentos agotados tras rate limit de Gemini.");
+                    throw new Error("Error al extraer transacciones con AI. Rate limit persistente.");
                 }
             }
             throw err;
