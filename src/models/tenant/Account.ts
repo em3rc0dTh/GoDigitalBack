@@ -1,0 +1,39 @@
+import mongoose, { Document, Model } from "mongoose";
+
+export interface AccountDocument extends Document {
+    alias?: string;
+    bank_name: string;
+    account_holder: string;
+    bank_account_type: string;
+    account_number: string;
+    currency?: string;
+    account_type?: string;
+    tx_count: number;
+    oldest?: Date | null;
+    newest?: Date | null;
+    assigned_bu?: mongoose.Types.ObjectId[];
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+const AccountSchema = new mongoose.Schema({
+    alias: { type: String },
+    bank_name: { type: String, required: true },
+    entity_id: { type: mongoose.Schema.Types.ObjectId, default: null }, // Ref > system_entity.id (System DB)
+    account_holder: { type: String, required: true },
+    bank_account_type: { type: String, required: true },
+    account_number: { type: String, required: true },
+    business_unit: [{ type: mongoose.Schema.Types.ObjectId, ref: "BusinessUnit" }], // Ref > business_unit.id
+    currency: { type: String },
+    account_type: { type: String },
+    tx_count: { type: Number, default: 0 },
+    oldest: { type: Date, default: null },
+    newest: { type: Date, default: null },
+    assigned_bu: [{ type: mongoose.Schema.Types.ObjectId, ref: "BusinessUnit" }],
+}, { timestamps: true });
+
+export function getAccountModel(
+    connection: mongoose.Connection
+): Model<AccountDocument> {
+    return connection.model<AccountDocument>("Bank_Account", AccountSchema);
+}

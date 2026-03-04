@@ -1,9 +1,17 @@
+// src/controllers/account.ts
 import { Request, Response } from "express";
-import Account from "../models/Account";
 import mongoose from "mongoose";
+import { getAccountModel } from "../models/tenant/Account";
+import { getTransactionModel } from "../models/tenant/Transaction";
 
 export const getAccounts = async (req: Request, res: Response) => {
   try {
+    if (!req.tenantDB) {
+      return res.status(500).json({ error: "Tenant connection not available" });
+    }
+
+    const Account = getAccountModel(req.tenantDB);
+
     const docs = await Account.find().sort({ createdAt: -1 }).lean();
 
     const normalized = docs.map((d: any) => ({
@@ -19,26 +27,45 @@ export const getAccounts = async (req: Request, res: Response) => {
       tx_count: d.tx_count,
       oldest: d.oldest,
       newest: d.newest,
+      assigned_bu: d.assigned_bu || [],
     }));
+
     return res.json(normalized);
   } catch (err) {
-    console.error("GET /account error:", err);
+    console.error("GET /accounts error:", err);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
 export const createAccount = async (req: Request, res: Response) => {
   try {
-    const data = req.body.account ? req.body.account : req.body;
+    if (!req.tenantDB) {
+      return res.status(500).json({ error: "Tenant connection not available" });
+    }
 
-    const doc = await Account.create(data);
+    const Account = getAccountModel(req.tenantDB);
+    const data = req.body.account || req.body;
+
+    const newAccount = new Account(data);
+    const doc = await newAccount.save();
+
+    // 🔥 Crear colección de transacciones por número de cuenta
+    const Transaction = getTransactionModel(
+      req.tenantDB,
+      doc.account_number
+    );
+    await Transaction.createCollection();
 
     if (req.body.account) {
       return res.json({ ok: true, saved: doc });
     }
-    return res.status(201).json(doc);
+
+    return res.status(201).json({
+      ...doc.toObject(),
+      transactionCollection: `Transaction_Raw_Web_${doc.account_number}`,
+    });
   } catch (err) {
-    console.error("POST /account error:", err);
+    console.error("POST /accounts error:", err);
     return res.status(500).json({ ok: false, error: "Error saving account" });
   }
 };
@@ -51,6 +78,11 @@ export const getAccountById = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Invalid account ID" });
     }
 
+    if (!req.tenantDB) {
+      return res.status(500).json({ error: "Tenant connection not available" });
+    }
+
+    const Account = getAccountModel(req.tenantDB);
     const doc = await Account.findById(id).lean();
 
     if (!doc) {
@@ -69,9 +101,10 @@ export const getAccountById = async (req: Request, res: Response) => {
       tx_count: doc.tx_count ?? 0,
       oldest: doc.oldest ?? null,
       newest: doc.newest ?? null,
+      assigned_bu: doc.assigned_bu || [],
     });
   } catch (err) {
-    console.error("GET /account/:id error:", err);
+    console.error("GET /accounts/:id error:", err);
     return res.status(500).json({ error: "Error getting account" });
   }
 };
@@ -83,6 +116,12 @@ export const updateAccount = async (req: Request, res: Response) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "Invalid account ID" });
     }
+
+    if (!req.tenantDB) {
+      return res.status(500).json({ error: "Tenant connection not available" });
+    }
+
+    const Account = getAccountModel(req.tenantDB);
 
     const updated = await Account.findByIdAndUpdate(
       id,
@@ -107,9 +146,11 @@ export const updateAccount = async (req: Request, res: Response) => {
       oldest: updated.oldest ?? null,
       newest: updated.newest ?? null,
       createdAt: updated.createdAt,
+      updatedAt: updated.updatedAt,
+      assigned_bu: updated.assigned_bu || [],
     });
   } catch (err) {
-    console.error("PUT /account/:id error:", err);
+    console.error("PUT /accounts/:id error:", err);
     return res.status(500).json({ error: "Error updating account" });
   }
 };
@@ -122,6 +163,12 @@ export const deleteAccount = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Invalid account ID" });
     }
 
+    if (!req.tenantDB) {
+      return res.status(500).json({ error: "Tenant connection not available" });
+    }
+
+    const Account = getAccountModel(req.tenantDB);
+
     const deleted = await Account.findByIdAndDelete(id);
     if (!deleted) {
       return res.status(404).json({ error: "Account not found" });
@@ -129,7 +176,56 @@ export const deleteAccount = async (req: Request, res: Response) => {
 
     return res.json({ ok: true, message: "Account deleted successfully" });
   } catch (err) {
-    console.error("DELETE /account/:id error:", err);
+    console.error("DELETE /accounts/:id error:", err);
     return res.status(500).json({ error: "Error deleting account" });
   }
 };
+
+export const getAccountsByBusinessUnit = async (req: Request, res: Response) => {
+  try {
+    const { businessUnitId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(businessUnitId)) {
+      return res.status(400).json({ error: "Invalid business unit ID" });
+    }
+
+    if (!req.tenantDB) {
+      return res.status(500).json({ error: "Tenant connection not available" });
+    }
+
+    const Account = getAccountModel(req.tenantDB);
+
+    const docs = await Account.find({
+      assigned_bu: businessUnitId,
+    }).sort({ createdAt: -1 }).lean();
+
+    const normalized = docs.map((d: any) => ({
+      id: d._id.toString(),
+      alias: d.alias,
+      bank_name: d.bank_name,
+      account_holder: d.account_holder,
+      account_number: d.account_number,
+      bank_account_type: d.bank_account_type,
+      currency: d.currency,
+      account_type: d.account_type,
+      createdAt: d.createdAt,
+      tx_count: d.tx_count,
+      oldest: d.oldest,
+      newest: d.newest,
+      assigned_bu: d.assigned_bu || [],
+    }));
+
+    return res.json(normalized);
+  } catch (err) {
+    console.error("GET /accounts/bu/:businessUnitId error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export async function getAccountInformationById(
+  tenantDB: mongoose.Connection,
+  accountId: mongoose.Types.ObjectId
+) {
+  const Account = getAccountModel(tenantDB);
+  return Account.findById(accountId).lean();
+}

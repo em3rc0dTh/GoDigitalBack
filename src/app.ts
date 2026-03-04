@@ -2,32 +2,44 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
+dotenv.config();
+
 import { connectDB } from "./config/db";
 import routes from "./routes/routes";
-
-// Load environment variables
-dotenv.config();
+import gmailRoutes from "./routes/gmail"; // ✅ IMPORTANTE
+import n8nRoutes from "./routes/n8n";
+import odooRoutes from "./routes/odooRoutes";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Middleware
 app.use(cors({
-    origin: "http://localhost:3000", // Allow your Next.js frontend
-    credentials: true // Allow cookies to be sent back and forth
+    origin: process.env.API_URL || "http://localhost:3000",
+    credentials: true
 }));
-app.use(express.json({ limit: '10mb' })); // Increased limit for transaction arrays
+app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
-// Database Connection
 connectDB();
 
-// Routes
-// Prefixing all routes with /api/back to match your Next.js structure
-app.use("/api/", routes);
+/**
+ * 🔓 GMAIL (SIN AUTH, SIN TENANT CONTEXT)
+ */
+app.use("/api/gmail", gmailRoutes);
 
-// Health Check
-app.get("/", (req, res) => {
+
+// N8N
+app.use("/api/n8n", n8nRoutes);
+
+// Odoo
+app.use("/api/odoo", odooRoutes);
+
+/**
+ * 🔐 APP NORMAL (CON AUTH + TENANT)
+ */
+app.use("/api", routes);
+
+app.get("/", (_, res) => {
     res.send("GoDigital API is running");
 });
 
