@@ -226,6 +226,7 @@ AMOUNT & CURRENCY RULES:
 
 GENERAL RULES:
 - Extract ALL transactions found in the text, even if some fields are missing.
+- CRITICAL: Do NOT duplicate transactions. The PDF parsing might list standard text or columns repeatedly due to formatting issues. If multiple identical lines exist, return only ONE copy unless they have distinctive balances or timestamps indicating separate events.
 - If no transactions are found, return an empty array.
 - Return ONLY JSON. No additional text.
 
@@ -277,6 +278,25 @@ ${text}
                     accountNumber = parsed.accountNumber ?? null;
                     transactions = Array.isArray(parsed.transactions) ? parsed.transactions : [];
                 }
+
+                // Deduplicar transacciones exactas antes de guardarlas (múltiples copias por error de lectura de columnas del PDF)
+                const uniqueTransactions: any[] = [];
+                const seenTransactions = new Set();
+
+                for (const tx of transactions) {
+                    // Si haces 2 pagos idénticos el mismo día, el SALDO (balance) o la hora exacta suelen ser distintos.
+                    // Si el saldo, fecha, concepto y monto y HORA son idénticos o nulos repetidamente, es un glitch visual.
+                    const txHash = `${tx.operation_date}|${tx.fecha_hora_raw}|${tx.movement}|${tx.amount}|${tx.balance}|${tx.source_account}|${tx.destination_account}`;
+                    if (!seenTransactions.has(txHash)) {
+                        seenTransactions.add(txHash);
+                        uniqueTransactions.push(tx);
+                    }
+                }
+
+                if (transactions.length !== uniqueTransactions.length) {
+                    console.log(`⚠️ Se filtraron ${transactions.length - uniqueTransactions.length} transacciones duplicadas idénticas extraídas por la IA.`);
+                }
+                transactions = uniqueTransactions;
 
                 console.log("Transacciones totales parseadas:", transactions.length);
 
