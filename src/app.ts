@@ -45,4 +45,14 @@ app.get("/", (_, res) => {
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+
+    // ── Estado de integración Temporal ───────────────────────────────────────
+    if (process.env.USE_TEMPORAL === 'true') {
+        console.log(`✅ [Temporal] HABILITADO — conectando a ${process.env.TEMPORAL_ADDRESS ?? 'localhost:7233'}`);
+        console.log(`   UI: http://localhost:8080`);
+    } else {
+        console.log(`⚠️  [Temporal] DESHABILITADO — los emails los envía GoDigitalBack directamente`);
+        console.log(`   Para activar: agrega USE_TEMPORAL=true en tu .env y reinicia`);
+    }
 });
+

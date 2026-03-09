@@ -103,6 +103,10 @@ router.get("/payment-requests/:id", PaymentRequestController.getPaymentRequestBy
 router.put("/payment-requests/:id", PaymentRequestController.updatePaymentRequest);
 router.delete("/payment-requests/:id", PaymentRequestController.deletePaymentRequest);
 
+// 🔌 [TEMPORAL] Estado del workflow de una PR (requiere USE_TEMPORAL=true)
+router.get("/payment-requests/:id/workflow-status", PaymentRequestController.getPaymentRequestWorkflowStatus);
+
+
 // 🆕 Rutas de transacciones procesadas
 router.get('/transactions/processed/:tenantDetailId', TxController.getProcessedTransactions);
 router.get('/transactions/detail/:tenantDetailId/:transactionId', TxController.getTransactionDetail);

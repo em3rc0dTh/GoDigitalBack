@@ -7,6 +7,8 @@ import { getBusinessUnitModel } from "../models/tenant/BusinessUnit";
 import { getAccountModel } from "../models/tenant/Account";
 import getUserModel from "../models/system/User";
 import { sendEmail } from "../services/email";
+import * as temporalPR from "../services/paymentRequestTemporal";
+import { isTemporalEnabled } from "../services/temporal";
 
 export const getPaymentRequests = async (req: Request, res: Response) => {
     try {
@@ -76,29 +78,30 @@ export const createPaymentRequest = async (req: Request, res: Response) => {
         const newPR = new PaymentRequest(data);
         const doc = await newPR.save();
 
-        // Send notifications
-        try {
-            const Project = getProjectModel(req.tenantDB);
-            const User = await getUserModel();
+        // Send notifications (skipped when Temporal is active — Temporal activities handle emails)
+        if (!isTemporalEnabled()) {
+            try {
+                const Project = getProjectModel(req.tenantDB);
+                const User = await getUserModel();
 
-            // Fetch Project & Provider
-            const project = await Project.findById(doc.project_id);
+                // Fetch Project & Provider
+                const project = await Project.findById(doc.project_id);
 
-            const Entity = getEntityModel(req.tenantDB);
-            const provider = await Entity.findById(doc.provider_id);
+                const Entity = getEntityModel(req.tenantDB);
+                const provider = await Entity.findById(doc.provider_id);
 
-            // 1. Send to Creator (Confirmation) OR Project Owner (Action Required)
-            // If creator is also project owner, they should get the Action Required email instead of just confirmation.
+                // 1. Send to Creator (Confirmation) OR Project Owner (Action Required)
+                // If creator is also project owner, they should get the Action Required email instead of just confirmation.
 
-            const isCreatorProjectOwner = doc.created_by && project?.projectOwner && doc.created_by.toString() === project.projectOwner.toString();
+                const isCreatorProjectOwner = doc.created_by && project?.projectOwner && doc.created_by.toString() === project.projectOwner.toString();
 
-            if (doc.created_by && !isCreatorProjectOwner) {
-                const creator = await User.findById(doc.created_by);
-                if (creator && creator.email) {
-                    await sendEmail(
-                        creator.email,
-                        `Payment Request Submitted - ${project?.name || 'GoDigital'}`,
-                        `
+                if (doc.created_by && !isCreatorProjectOwner) {
+                    const creator = await User.findById(doc.created_by);
+                    if (creator && creator.email) {
+                        await sendEmail(
+                            creator.email,
+                            `Payment Request Submitted - ${project?.name || 'GoDigital'}`,
+                            `
                         <div style="font-family: Arial, sans-serif; padding: 20px;">
                             <h2>New Payment Request Submitted</h2>
                             <p>Hello ${creator.name},</p>
@@ -107,19 +110,19 @@ export const createPaymentRequest = async (req: Request, res: Response) => {
                             ${generateEmailButton(doc, '')}
                         </div>
                         `
-                    );
-                    console.log(`✅ Notification sent to Creator: ${creator.email}`);
+                        );
+                        console.log(`✅ Notification sent to Creator: ${creator.email}`);
+                    }
                 }
-            }
 
-            // 2. Send to Project Owner (Action Required)
-            if (project && project.projectOwner) {
-                const owner = await User.findById(project.projectOwner);
-                if (owner && owner.email) {
-                    await sendEmail(
-                        owner.email,
-                        `Action Required: Approve Payment Request - ${project?.name || 'GoDigital'}`,
-                        `
+                // 2. Send to Project Owner (Action Required)
+                if (project && project.projectOwner) {
+                    const owner = await User.findById(project.projectOwner);
+                    if (owner && owner.email) {
+                        await sendEmail(
+                            owner.email,
+                            `Action Required: Approve Payment Request - ${project?.name || 'GoDigital'}`,
+                            `
                         <div style="font-family: Arial, sans-serif; padding: 20px;">
                             <h2>New Payment Request to Approve</h2>
                             <p>Hello ${owner.name},</p>
@@ -128,14 +131,44 @@ export const createPaymentRequest = async (req: Request, res: Response) => {
                             ${generateEmailButton(doc, '/review')}
                         </div>
                         `
-                    );
-                    console.log(`✅ Notification sent to Project Owner: ${owner.email}`);
+                        );
+                        console.log(`✅ Notification sent to Project Owner: ${owner.email}`);
+                    }
                 }
-            }
 
-        } catch (notifyErr) {
-            console.error("⚠️ Error sending payment request notifications:", notifyErr);
+            } catch (notifyErr) {
+                console.error("⚠️ Error sending payment request notifications:", notifyErr);
+            }
+        } // end if (!isTemporalEnabled())
+
+        // ── [TEMPORAL] Iniciar workflow — FUERA del bloque de emails ───────────
+        if (isTemporalEnabled()) {
+            try {
+                const TProject = getProjectModel(req.tenantDB);
+                const TEntity = getEntityModel(req.tenantDB);
+                const TUser = await getUserModel();
+                const tProject = await TProject.findById(doc.project_id);
+                const tProvider = await TEntity.findById(doc.provider_id);
+                if (tProject && tProvider) {
+                    const isCreatorOwner = doc.created_by && tProject.projectOwner &&
+                        doc.created_by.toString() === tProject.projectOwner.toString();
+                    const tCreator = (doc.created_by && !isCreatorOwner)
+                        ? await TUser.findById(doc.created_by) : null;
+                    const tOwner = tProject.projectOwner
+                        ? await TUser.findById(tProject.projectOwner) : null;
+                    const input = temporalPR.buildTemporalPRInput(
+                        doc, tProject, tProvider,
+                        tCreator ?? tOwner,
+                        tOwner,
+                        req.tenantDetailId ?? req.tenantId ?? 'unknown',
+                    );
+                    await temporalPR.startPRWorkflow(input);
+                }
+            } catch (temporalErr: any) {
+                console.error("⚠️ [Temporal] Error iniciando workflow:", temporalErr?.message);
+            }
         }
+        // ── [/TEMPORAL] ──────────────────────────────────────────────────────
 
         return res.status(201).json(doc);
     } catch (err) {
@@ -393,18 +426,28 @@ export const approvePaymentRequest = async (req: Request, res: Response) => {
         if (req.body.notes) pr.approval_notes = req.body.notes;
         await pr.save();
 
-        // Notifications
-        try {
-            const provider = await Entity.findById(pr.provider_id);
-            const creator = pr.created_by ? await User.findById(pr.created_by) : null;
-            const approver = await User.findById(userId);
+        // ── [TEMPORAL] Signal de aprobación ──────────────────────────────────────────
+        await temporalPR.signalApprove(
+            id,
+            userId!,
+            currentUser?.name ?? userId!,
+            req.body.notes,
+        );
+        // ── [/TEMPORAL] ──────────────────────────────────────────────────────────────
 
-            // Notify Creator
-            if (creator && creator.email) {
-                await sendEmail(
-                    creator.email,
-                    `Payment Request Approved - ${project.name}`,
-                    `
+        // Notifications (skipped when Temporal is active — Temporal activities handle emails)
+        if (!isTemporalEnabled()) {
+            try {
+                const provider = await Entity.findById(pr.provider_id);
+                const creator = pr.created_by ? await User.findById(pr.created_by) : null;
+                const approver = await User.findById(userId);
+
+                // Notify Creator
+                if (creator && creator.email) {
+                    await sendEmail(
+                        creator.email,
+                        `Payment Request Approved - ${project.name}`,
+                        `
                     <div style="font-family: Arial, sans-serif; padding: 20px;">
                         <h2>Payment Request Approved</h2>
                         <p>Hello ${creator.name},</p>
@@ -413,15 +456,15 @@ export const approvePaymentRequest = async (req: Request, res: Response) => {
                         ${generateEmailButton(pr, '')}
                     </div>
                     `
-                );
-            }
+                    );
+                }
 
-            // Notify Approver (Self)
-            if (approver && approver.email) {
-                await sendEmail(
-                    approver.email,
-                    `Payment Request Approved (Confirmation) - ${project.name}`,
-                    `
+                // Notify Approver (Self)
+                if (approver && approver.email) {
+                    await sendEmail(
+                        approver.email,
+                        `Payment Request Approved (Confirmation) - ${project.name}`,
+                        `
                     <div style="font-family: Arial, sans-serif; padding: 20px;">
                         <h2>You Approved a Payment Request</h2>
                         <p>Hello ${approver.name},</p>
@@ -430,17 +473,17 @@ export const approvePaymentRequest = async (req: Request, res: Response) => {
                         ${generateEmailButton(pr, '')}
                     </div>
                     `
-                );
-            }
+                    );
+                }
 
-            // Notify Project Owner (Next Step: Authorize)
-            if (project && project.projectOwner) {
-                const owner = await User.findById(project.projectOwner);
-                if (owner && owner.email) {
-                    await sendEmail(
-                        owner.email,
-                        `Action Required: Authorize Payment Request - ${project.name}`,
-                        `
+                // Notify Project Owner (Next Step: Authorize)
+                if (project && project.projectOwner) {
+                    const owner = await User.findById(project.projectOwner);
+                    if (owner && owner.email) {
+                        await sendEmail(
+                            owner.email,
+                            `Action Required: Authorize Payment Request - ${project.name}`,
+                            `
                         <div style="font-family: Arial, sans-serif; padding: 20px;">
                             <h2>Payment Request Authorization Needed</h2>
                             <p>Hello ${owner.name},</p>
@@ -449,12 +492,13 @@ export const approvePaymentRequest = async (req: Request, res: Response) => {
                             ${generateEmailButton(pr, '/authorize')}
                         </div>
                         `
-                    );
+                        );
+                    }
                 }
+            } catch (notifyErr) {
+                console.error("Notification error:", notifyErr);
             }
-        } catch (notifyErr) {
-            console.error("Notification error:", notifyErr);
-        }
+        } // end if (!isTemporalEnabled())
 
         return res.json(pr);
     } catch (err) {
@@ -519,18 +563,34 @@ export const authorizePaymentRequest = async (req: Request, res: Response) => {
         await pr.save();
         await pr.populate('debited_bank_account');
 
-        // Notifications
-        try {
-            const provider = await Entity.findById(pr.provider_id);
-            const creator = pr.created_by ? await User.findById(pr.created_by) : null;
-            const authorizingAdmin = await User.findById(userId);
+        // ── [TEMPORAL] Signal de autorización ────────────────────────────────────────
+        const populatedAccount = pr.debited_bank_account as any;
+        await temporalPR.signalAuthorize(
+            id,
+            userId!,
+            currentUser?.name ?? userId!,
+            payment_date ?? new Date().toISOString().split('T')[0],
+            debited_bank_account ?? '',
+            populatedAccount?.bank_name
+                ? `${populatedAccount.bank_name} ****${populatedAccount.account_number?.slice(-4)}`
+                : 'Cuenta bancaria',
+            req.body.notes,
+        );
+        // ── [/TEMPORAL] ──────────────────────────────────────────────────────────────
 
-            // Notify Creator
-            if (creator && creator.email) {
-                await sendEmail(
-                    creator.email,
-                    `Payment Request Authorized - ${project.name}`,
-                    `
+        // Notifications (skipped when Temporal is active)
+        if (!isTemporalEnabled()) {
+            try {
+                const provider = await Entity.findById(pr.provider_id);
+                const creator = pr.created_by ? await User.findById(pr.created_by) : null;
+                const authorizingAdmin = await User.findById(userId);
+
+                // Notify Creator
+                if (creator && creator.email) {
+                    await sendEmail(
+                        creator.email,
+                        `Payment Request Authorized - ${project.name}`,
+                        `
                     <div style="font-family: Arial, sans-serif; padding: 20px;">
                         <h2>Payment Request Authorized</h2>
                         <p>Hello ${creator.name},</p>
@@ -539,15 +599,15 @@ export const authorizePaymentRequest = async (req: Request, res: Response) => {
                         ${generateEmailButton(pr, '')}
                     </div>
                     `
-                );
-            }
+                    );
+                }
 
-            // Notify Authorizer (Self - Project Owner)
-            if (authorizingAdmin && authorizingAdmin.email) {
-                await sendEmail(
-                    authorizingAdmin.email,
-                    `Action Required: Attend Payment Request - ${project.name}`,
-                    `
+                // Notify Authorizer (Self - Project Owner)
+                if (authorizingAdmin && authorizingAdmin.email) {
+                    await sendEmail(
+                        authorizingAdmin.email,
+                        `Action Required: Attend Payment Request - ${project.name}`,
+                        `
                     <div style="font-family: Arial, sans-serif; padding: 20px;">
                         <h2>Payment Request Authorized</h2>
                         <p>Hello ${authorizingAdmin.name},</p>
@@ -556,12 +616,13 @@ export const authorizePaymentRequest = async (req: Request, res: Response) => {
                         ${generateEmailButton(pr, '/pay')}
                     </div>
                     `
-                );
-            }
+                    );
+                }
 
-        } catch (notifyErr) {
-            console.error("Notification error:", notifyErr);
-        }
+            } catch (notifyErr) {
+                console.error("Notification error:", notifyErr);
+            }
+        } // end if (!isTemporalEnabled())
 
         return res.json(pr);
     } catch (err) {
@@ -624,18 +685,29 @@ export const payPaymentRequest = async (req: Request, res: Response) => {
         await pr.save();
         await pr.populate('debited_bank_account');
 
-        // Notifications
-        try {
-            const provider = await Entity.findById(pr.provider_id);
-            const creator = pr.created_by ? await User.findById(pr.created_by) : null;
-            const payer = await User.findById(userId);
+        // ── [TEMPORAL] Signal de pago ─────────────────────────────────────────────────
+        await temporalPR.signalPay(
+            id,
+            userId!,
+            currentUser?.name ?? userId!,
+            payment_proof,
+            notes,
+        );
+        // ── [/TEMPORAL] ──────────────────────────────────────────────────────────────
 
-            // Notify Creator
-            if (creator && creator.email) {
-                await sendEmail(
-                    creator.email,
-                    `Payment Completed - ${project.name}`,
-                    `
+        // Notifications (skipped when Temporal is active)
+        if (!isTemporalEnabled()) {
+            try {
+                const provider = await Entity.findById(pr.provider_id);
+                const creator = pr.created_by ? await User.findById(pr.created_by) : null;
+                const payer = await User.findById(userId);
+
+                // Notify Creator
+                if (creator && creator.email) {
+                    await sendEmail(
+                        creator.email,
+                        `Payment Completed - ${project.name}`,
+                        `
                     <div style="font-family: Arial, sans-serif; padding: 20px;">
                         <h2>Payment Request Paid</h2>
                         <p>Hello ${creator.name},</p>
@@ -645,15 +717,15 @@ export const payPaymentRequest = async (req: Request, res: Response) => {
                         ${generateEmailButton(pr, '')}
                     </div>
                     `
-                );
-            }
+                    );
+                }
 
-            // Notify Treasurer (Self)
-            if (payer && payer.email) {
-                await sendEmail(
-                    payer.email,
-                    `Payment Processed (Confirmation) - ${project.name}`,
-                    `
+                // Notify Treasurer (Self)
+                if (payer && payer.email) {
+                    await sendEmail(
+                        payer.email,
+                        `Payment Processed (Confirmation) - ${project.name}`,
+                        `
                     <div style="font-family: Arial, sans-serif; padding: 20px;">
                         <h2>You Processed a Payment</h2>
                         <p>Hello ${payer.name},</p>
@@ -662,12 +734,13 @@ export const payPaymentRequest = async (req: Request, res: Response) => {
                         ${generateEmailButton(pr, '')}
                     </div>
                     `
-                );
-            }
+                    );
+                }
 
-        } catch (notifyErr) {
-            console.error("Notification error:", notifyErr);
-        }
+            } catch (notifyErr) {
+                console.error("Notification error:", notifyErr);
+            }
+        } // end if (!isTemporalEnabled())
 
         return res.json(pr);
     } catch (err) {
@@ -706,19 +779,31 @@ export const rejectPaymentRequest = async (req: Request, res: Response) => {
         pr.rejection_reason = reason;
         await pr.save();
 
-        // Notifications
-        try {
-            const project = await Project.findById(pr.project_id);
-            const provider = await Entity.findById(pr.provider_id);
-            const creator = pr.created_by ? await User.findById(pr.created_by) : null;
-            const rejector = await User.findById(userId);
+        // ── [TEMPORAL] Signal de rechazo ──────────────────────────────────────────────
+        const User2 = await getUserModel();
+        const rejectingUser = await User2.findById(userId);
+        await temporalPR.signalReject(
+            id,
+            userId!,
+            rejectingUser?.name ?? userId!,
+            reason,
+        );
+        // ── [/TEMPORAL] ──────────────────────────────────────────────────────────────
 
-            // Notify Creator
-            if (creator && creator.email) {
-                await sendEmail(
-                    creator.email,
-                    `Payment Request Rejected - ${project?.name || 'GoDigital'}`,
-                    `
+        // Notifications (skipped when Temporal is active)
+        if (!isTemporalEnabled()) {
+            try {
+                const project = await Project.findById(pr.project_id);
+                const provider = await Entity.findById(pr.provider_id);
+                const creator = pr.created_by ? await User.findById(pr.created_by) : null;
+                const rejector = await User.findById(userId);
+
+                // Notify Creator
+                if (creator && creator.email) {
+                    await sendEmail(
+                        creator.email,
+                        `Payment Request Rejected - ${project?.name || 'GoDigital'}`,
+                        `
                     <div style="font-family: Arial, sans-serif; padding: 20px;">
                         <h2>Payment Request Rejected</h2>
                         <p>Hello ${creator.name},</p>
@@ -727,15 +812,37 @@ export const rejectPaymentRequest = async (req: Request, res: Response) => {
                         ${generateEmailButton(pr, '')}
                     </div>
                     `
-                );
+                    );
+                }
+            } catch (notifyErr) {
+                console.error("Notification error:", notifyErr);
             }
-        } catch (notifyErr) {
-            console.error("Notification error:", notifyErr);
-        }
+        } // end if (!isTemporalEnabled())
 
         return res.json(pr);
     } catch (err) {
         console.error("Error rejecting PR:", err);
         return res.status(500).json({ error: "Internal Server Error" });
+    }
+};
+
+// ── [TEMPORAL] Endpoint adicional: consultar estado del workflow ───────────────
+export const getPaymentRequestWorkflowStatus = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const status = await temporalPR.getWorkflowStatus(id);
+
+        if (!status) {
+            return res.json({
+                temporalEnabled: process.env.USE_TEMPORAL === 'true',
+                message: process.env.USE_TEMPORAL === 'true'
+                    ? 'Workflow no encontrado o Temporal no disponible'
+                    : 'Temporal no está habilitado (USE_TEMPORAL=true para activar)',
+            });
+        }
+
+        return res.json(status);
+    } catch (err) {
+        return res.status(500).json({ error: 'Error consultando workflow' });
     }
 };
