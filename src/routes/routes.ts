@@ -14,6 +14,8 @@ import * as ProjectController from "../controllers/project";
 import * as PurchaseOrderController from "../controllers/purchaseOrder";
 import * as PaymentRequestController from "../controllers/paymentRequest";
 import * as BusinessUnitController from "../controllers/businessUnit";
+import * as CashRequestController from "../controllers/cashRequest";
+import * as FileController from "../controllers/file";
 
 const router = Router();
 
@@ -118,6 +120,30 @@ router.post("/business-units", BusinessUnitController.createBusinessUnit);
 router.get("/business-units/:id", BusinessUnitController.getBusinessUnitById);
 router.put("/business-units/:id", BusinessUnitController.updateBusinessUnit);
 router.delete("/business-units/:id", BusinessUnitController.deleteBusinessUnit);
+
+// Cash Requests
+router.get("/cash-requests",                  CashRequestController.getCashRequests);
+router.post("/cash-requests",                 CashRequestController.createCashRequest);
+
+// ✅ Specific routes FIRST
+router.put("/cash-requests/:id/approve",      CashRequestController.approveCashRequest);
+router.put("/cash-requests/:id/authorize",    CashRequestController.authorizeCashRequest);
+router.put("/cash-requests/:id/pay",          CashRequestController.payCashRequest);
+router.put("/cash-requests/:id/submit-expense", CashRequestController.submitExpense);
+router.put("/cash-requests/:id/review",       CashRequestController.reviewCashRequest);
+router.put("/cash-requests/:id/close",        CashRequestController.closeCashRequest);
+router.put("/cash-requests/:id/reject",       CashRequestController.rejectCashRequest);
+router.put("/cash-requests/:id/internal-status", CashRequestController.internalStatusUpdate);
+router.get("/cash-requests/:id/workflow-status", CashRequestController.getCashRequestWorkflowStatus);
+
+// ✅ Generic routes LAST
+router.get("/cash-requests/:id",              CashRequestController.getCashRequestById);
+router.put("/cash-requests/:id",              CashRequestController.updateCashRequest);
+router.delete("/cash-requests/:id",           CashRequestController.deleteCashRequest);
+
+// Files (Tenant bounded)
+router.post("/files",                         FileController.uploadFile);
+router.get("/files/:id",                      FileController.downloadFile);
 
 // Statements
 router.use("/statements", statementRoutes);

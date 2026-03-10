@@ -2,7 +2,7 @@
 import mongoose from "mongoose";
 import { getSystemDB, getOrCreateModel } from "../../config/tenantDb";
 
-const UserSchema = new mongoose.Schema({
+export const UserSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     passwordHash: { type: String, required: true },
     name: { type: String, required: true }, // Renamed from fullName
