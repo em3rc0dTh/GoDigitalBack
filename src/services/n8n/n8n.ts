@@ -37,6 +37,40 @@ export class N8NService {
         }
     }
 
+    async readCashRequestInvoice(file: Express.Multer.File) {
+        const n8nWebhookUrl = process.env.N8N_WEBHOOK_READ_INVOICE;
+
+        if (!n8nWebhookUrl) {
+            throw new Error("N8N_WEBHOOK_READ_INVOICE environment variable is not defined");
+        }
+
+        try {
+            const formData = new FormData();
+            formData.append("file", file.buffer, {
+                filename: file.originalname,
+                contentType: file.mimetype,
+            });
+
+            console.log(`Sending Cash Request Invoice ${file.originalname} to N8N: ${n8nWebhookUrl}`);
+
+            const response = await axios.post(n8nWebhookUrl, formData, {
+                headers: {
+                    ...formData.getHeaders(),
+                },
+            });
+
+            console.log("N8N Cash Request Response:", response.data);
+            return response.data;
+        } catch (error: any) {
+            if (error.response) {
+                console.error("N8N Error Status:", error.response.status);
+                console.error("N8N Error Data:", error.response.data);
+            }
+            console.error("Error sending file to N8N:", error.message);
+            throw new Error(`Failed to process cash request invoice: ${error.message}`);
+        }
+    }
+
     async savePendantTicket(tenantDetailId: string, ticketId: string) {
         const TenantDetail = await getTenantDetailModel();
 

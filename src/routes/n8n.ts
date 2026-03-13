@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { N8NService } from "../services/n8n/n8n";
+import { geminiInvoiceService } from "../services/ai/geminiInvoiceService";
 import console from "console";
 import multer from "multer";
 
@@ -29,6 +30,50 @@ router.post("/read_payment_request", upload.array("files"), async (req, res) => 
         res.status(200).json(result);
     } catch (error: any) {
         console.error("Error in /read_payment_request:", error);
+        res.status(500).send(error.message || "Internal Server Error");
+    }
+});
+
+router.post("/read_cash_request_invoice", upload.array("files"), async (req, res) => {
+    try {
+        const files = req.files as Express.Multer.File[];
+        const file = files && files.length > 0 ? files[0] : null;
+
+        console.log("Processing cash request invoice (N8N):", file ? file.originalname : "No file");
+
+        if (!file) {
+            res.status(400).send("No file uploaded");
+            return;
+        }
+
+        const result = await n8nService.readCashRequestInvoice(file);
+        res.status(200).json(result);
+    } catch (error: any) {
+        console.error("Error in /read_cash_request_invoice:", error);
+        res.status(500).send(error.message || "Internal Server Error");
+    }
+});
+
+router.post("/read_invoice_gemini", upload.array("files"), async (req, res) => {
+    try {
+        const files = req.files as Express.Multer.File[];
+        const file = files && files.length > 0 ? files[0] : null;
+
+        console.log("Processing cash request invoice (Gemini):", file ? file.originalname : "No file");
+
+        if (!file) {
+            res.status(400).send("No file uploaded");
+            return;
+        }
+
+        const result = await geminiInvoiceService.analyzeInvoice(file.buffer, file.mimetype);
+        if (!result) {
+            res.status(500).json({ error: "Failed to analyze invoice with Gemini" });
+            return;
+        }
+        res.status(200).json(result);
+    } catch (error: any) {
+        console.error("Error in /read_invoice_gemini:", error);
         res.status(500).send(error.message || "Internal Server Error");
     }
 });

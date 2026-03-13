@@ -28,6 +28,23 @@ export interface CashRequestDocument extends Document {
     // Expense report
     total_spent?: number;
     expense_files?: string[];
+    expense_items?: Array<{
+        file_id?: string;
+        date?: Date;
+        amount: number;
+        currency: string;
+        issuer_name?: string;
+        tax_id?: string;
+        description?: string;
+        items?: Array<{
+            description: string;
+            quantity: number;
+            unit?: string;
+            unitPrice: number;
+            total: number;
+        }>;
+        ai_raw_data?: any;
+    }>;
     submitted_at?: Date;
     // Review / settlement
     reviewed_by?: mongoose.Types.ObjectId;
@@ -73,6 +90,26 @@ const CashRequestSchema = new mongoose.Schema({
     payment_notes:           { type: String },
     total_spent:             { type: Number },
     expense_files:           { type: [String], default: [] },
+    expense_items: {
+        type: [{
+            file_id:      { type: String },
+            date:         { type: Date },
+            amount:       { type: Number, required: true },
+            currency:     { type: String },
+            issuer_name:  { type: String },
+            tax_id:       { type: String },
+            description:  { type: String },
+            items: [{
+                description: { type: String },
+                quantity:    { type: Number },
+                unit:        { type: String },
+                unitPrice:   { type: Number },
+                total:       { type: Number }
+            }],
+            ai_raw_data: { type: mongoose.Schema.Types.Mixed }
+        }],
+        default: []
+    },
     submitted_at:            { type: Date },
     reviewed_by:             { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     balance:                 { type: Number },

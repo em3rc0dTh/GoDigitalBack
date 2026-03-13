@@ -9,6 +9,7 @@ import { Request, Response } from "express";
 import mongoose from "mongoose";
 import { getCashRequestModel } from "../models/tenant/CashRequest";
 import { getProjectModel } from "../models/tenant/Project";
+import { getTenantFileModel } from "../models/tenant/TenantFile";
 import getUserModel, { UserSchema } from "../models/system/User";
 import { isTemporalEnabled } from "../services/temporal";
 import * as temporalCR from "../services/cashRequestTemporal";
@@ -24,7 +25,7 @@ export const getCashRequests = async (req: Request, res: Response) => {
         const User = await getUserModel();
 
         const filter: any = {};
-        if (req.query.status)          filter.status = req.query.status;
+        if (req.query.status) filter.status = req.query.status;
         if (req.query.mine === 'true' && req.userId)
             filter.created_by = new mongoose.Types.ObjectId(req.userId);
 
@@ -78,11 +79,11 @@ export const createCashRequest = async (req: Request, res: Response) => {
         if (!req.tenantDB) return res.status(500).json({ error: "Tenant connection not available" });
 
         const CashRequest = getCashRequestModel(req.tenantDB);
-        const Project     = getProjectModel(req.tenantDB);
-        const User        = await getUserModel();
+        const Project = getProjectModel(req.tenantDB);
+        const User = await getUserModel();
 
         const data: any = { ...req.body, created_by: req.userId };
-        
+
         if (req.body.beneficiary_email) {
             const beneficiaryUser = await User.findOne({ email: req.body.beneficiary_email.trim().toLowerCase() });
             if (beneficiaryUser) {
@@ -94,12 +95,12 @@ export const createCashRequest = async (req: Request, res: Response) => {
             data.beneficiary_id = req.userId; // Por defecto el creador es el beneficiado
         }
 
-        const doc  = await new CashRequest(data).save();
+        const doc = await new CashRequest(data).save();
 
         // ── Temporal: iniciar workflow ────────────────────────────────────────
         if (isTemporalEnabled()) {
             try {
-                const project  = await Project.findById(doc.project_id);
+                const project = await Project.findById(doc.project_id);
                 const employee = doc.beneficiary_id ? await User.findById(doc.beneficiary_id) : await User.findById(doc.created_by);
                 const supervisor = project?.projectOwner ? await User.findById(project.projectOwner) : null;
                 // SuperAdmin: find any user with role=superadmin in the system
@@ -169,8 +170,8 @@ export const approveCashRequest = async (req: Request, res: Response) => {
         if (!req.tenantDB) return res.status(500).json({ error: "Tenant connection not available" });
 
         const CashRequest = getCashRequestModel(req.tenantDB);
-        const Project     = getProjectModel(req.tenantDB);
-        const User        = await getUserModel();
+        const Project = getProjectModel(req.tenantDB);
+        const User = await getUserModel();
 
         const cr = await CashRequest.findById(id);
         if (!cr) return res.status(404).json({ error: "Cash request not found" });
@@ -184,7 +185,7 @@ export const approveCashRequest = async (req: Request, res: Response) => {
             return res.status(403).json({ error: "Only the Supervisor (Project Owner) or SuperAdmin can approve" });
         }
 
-        cr.status      = 'approved';
+        cr.status = 'approved';
         cr.approved_by = new mongoose.Types.ObjectId(req.userId!);
         if (req.body.notes) cr.approval_notes = req.body.notes;
         await cr.save();
@@ -206,7 +207,7 @@ export const authorizeCashRequest = async (req: Request, res: Response) => {
         if (!req.tenantDB) return res.status(500).json({ error: "Tenant connection not available" });
 
         const CashRequest = getCashRequestModel(req.tenantDB);
-        const User        = await getUserModel();
+        const User = await getUserModel();
 
         const cr = await CashRequest.findById(id);
         if (!cr) return res.status(404).json({ error: "Cash request not found" });
@@ -222,11 +223,11 @@ export const authorizeCashRequest = async (req: Request, res: Response) => {
             return res.status(400).json({ error: "authorizedAmount is required" });
         }
 
-        cr.status               = 'authorized';
-        cr.authorized_by        = new mongoose.Types.ObjectId(req.userId!);
-        cr.authorized_amount    = Number(authorizedAmount);
-        cr.expense_period_days  = Number(expensePeriodDays);
-        cr.authorization_notes  = notes;
+        cr.status = 'authorized';
+        cr.authorized_by = new mongoose.Types.ObjectId(req.userId!);
+        cr.authorized_amount = Number(authorizedAmount);
+        cr.expense_period_days = Number(expensePeriodDays);
+        cr.authorization_notes = notes;
         await cr.save();
 
         await temporalCR.signalAuthorize(
@@ -249,7 +250,7 @@ export const payCashRequest = async (req: Request, res: Response) => {
         if (!req.tenantDB) return res.status(500).json({ error: "Tenant connection not available" });
 
         const CashRequest = getCashRequestModel(req.tenantDB);
-        const User        = await getUserModel();
+        const User = await getUserModel();
 
         const cr = await CashRequest.findById(id);
         if (!cr) return res.status(404).json({ error: "Cash request not found" });
@@ -262,10 +263,10 @@ export const payCashRequest = async (req: Request, res: Response) => {
 
         const { paymentProof, notes } = req.body;
 
-        cr.status                   = 'paid';
-        cr.paid_by                  = new mongoose.Types.ObjectId(req.userId!);
-        cr.payment_proof            = paymentProof;
-        cr.payment_notes            = notes;
+        cr.status = 'paid';
+        cr.paid_by = new mongoose.Types.ObjectId(req.userId!);
+        cr.payment_proof = paymentProof;
+        cr.payment_notes = notes;
         cr.expense_period_started_at = new Date();
         await cr.save();
 
@@ -286,7 +287,7 @@ export const submitExpense = async (req: Request, res: Response) => {
         if (!req.tenantDB) return res.status(500).json({ error: "Tenant connection not available" });
 
         const CashRequest = getCashRequestModel(req.tenantDB);
-        const User        = await getUserModel();
+        const User = await getUserModel();
 
         const cr = await CashRequest.findById(id);
         if (!cr) return res.status(404).json({ error: "Cash request not found" });
@@ -297,10 +298,10 @@ export const submitExpense = async (req: Request, res: Response) => {
         const currentUser = await User.findById(req.userId);
         const { totalSpent, files = [], notes } = req.body;
 
-        cr.status        = 'submitted';
-        cr.total_spent   = Number(totalSpent);
+        cr.status = 'submitted';
+        cr.total_spent = Number(totalSpent);
         cr.expense_files = files;
-        cr.submitted_at  = new Date();
+        cr.submitted_at = new Date();
         await cr.save();
 
         await temporalCR.signalSubmitExpense(
@@ -323,7 +324,7 @@ export const reviewCashRequest = async (req: Request, res: Response) => {
         if (!req.tenantDB) return res.status(500).json({ error: "Tenant connection not available" });
 
         const CashRequest = getCashRequestModel(req.tenantDB);
-        const User        = await getUserModel();
+        const User = await getUserModel();
 
         const cr = await CashRequest.findById(id);
         if (!cr) return res.status(404).json({ error: "Cash request not found" });
@@ -337,18 +338,18 @@ export const reviewCashRequest = async (req: Request, res: Response) => {
         const { totalSpent, notes } = req.body;
         const authorizedAmount = cr.authorized_amount ?? cr.requested_amount;
         const spentNum = Number(totalSpent ?? cr.total_spent ?? 0);
-        const balance  = spentNum - authorizedAmount; // positive = reimburse, negative = refund
+        const balance = spentNum - authorizedAmount; // positive = reimburse, negative = refund
 
         // Determine next status
         let nextStatus: 'closed' | 'reimbursement' | 'refund';
-        if (balance === 0)      nextStatus = 'closed';
-        else if (balance > 0)   nextStatus = 'reimbursement';
-        else                    nextStatus = 'refund';
+        if (balance === 0) nextStatus = 'closed';
+        else if (balance > 0) nextStatus = 'reimbursement';
+        else nextStatus = 'refund';
 
-        cr.status      = nextStatus === 'closed' ? 'closed' : nextStatus;
+        cr.status = nextStatus === 'closed' ? 'closed' : nextStatus;
         cr.reviewed_by = new mongoose.Types.ObjectId(req.userId!);
         cr.total_spent = spentNum;
-        cr.balance     = balance;
+        cr.balance = balance;
         cr.review_notes = notes;
         if (nextStatus === 'closed') cr.closed_at = new Date();
         await cr.save();
@@ -373,7 +374,7 @@ export const closeCashRequest = async (req: Request, res: Response) => {
         if (!req.tenantDB) return res.status(500).json({ error: "Tenant connection not available" });
 
         const CashRequest = getCashRequestModel(req.tenantDB);
-        const User        = await getUserModel();
+        const User = await getUserModel();
 
         const cr = await CashRequest.findById(id);
         if (!cr) return res.status(404).json({ error: "Cash request not found" });
@@ -387,11 +388,11 @@ export const closeCashRequest = async (req: Request, res: Response) => {
         }
 
         const { proof, notes } = req.body;
-        cr.status        = 'closed';
-        cr.closed_by     = new mongoose.Types.ObjectId(req.userId!);
+        cr.status = 'closed';
+        cr.closed_by = new mongoose.Types.ObjectId(req.userId!);
         cr.closure_proof = proof;
         cr.closure_notes = notes;
-        cr.closed_at     = new Date();
+        cr.closed_at = new Date();
         await cr.save();
 
         await temporalCR.signalClose(id, req.userId!, currentUser.name ?? req.userId!, proof, notes);
@@ -411,7 +412,7 @@ export const rejectCashRequest = async (req: Request, res: Response) => {
         if (!req.tenantDB) return res.status(500).json({ error: "Tenant connection not available" });
 
         const CashRequest = getCashRequestModel(req.tenantDB);
-        const User        = await getUserModel();
+        const User = await getUserModel();
 
         const cr = await CashRequest.findById(id);
         if (!cr) return res.status(404).json({ error: "Cash request not found" });
@@ -424,8 +425,8 @@ export const rejectCashRequest = async (req: Request, res: Response) => {
         const currentUser = await User.findById(req.userId);
         const { reason = 'No reason provided' } = req.body;
 
-        cr.status           = 'rejected';
-        cr.rejected_by      = new mongoose.Types.ObjectId(req.userId!);
+        cr.status = 'rejected';
+        cr.rejected_by = new mongoose.Types.ObjectId(req.userId!);
         cr.rejection_reason = reason;
         await cr.save();
 
@@ -435,6 +436,103 @@ export const rejectCashRequest = async (req: Request, res: Response) => {
     } catch (err) {
         console.error("PUT /cash-requests/:id/reject error:", err);
         return res.status(500).json({ error: "Error rejecting cash request" });
+    }
+};
+
+// ─── Add Expense Item with AI Analysis (Progressive) ──────────────────────────
+export const addExpenseItemAI = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params; // CashRequest ID
+        const file = req.file;   // Multer file from upload
+        const { method = 'n8n' } = req.body; // 'gemini' or 'n8n'
+
+        if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid ID" });
+        if (!req.tenantDB) return res.status(500).json({ error: "Tenant connection not available" });
+        if (!file) return res.status(400).json({ error: "No image file provided" });
+
+        const CashRequest = getCashRequestModel(req.tenantDB);
+        const cr = await CashRequest.findById(id);
+        if (!cr) return res.status(404).json({ error: "Cash request not found" });
+
+        // Allowed statuses for adding expenses
+        const allowedStatuses = ['paid', 'expense_draft', 'submitted', 'under_review'];
+        if (!allowedStatuses.includes(cr.status)) {
+            return res.status(400).json({ error: `Cannot add expense items in status: ${cr.status}` });
+        }
+
+        // 1. Analyze with AI
+        let aiResult: any;
+        if (method === 'n8n') {
+            const n8nService = new (require("../services/n8n/n8n").N8NService)();
+            aiResult = await n8nService.readCashRequestInvoice(file);
+        } else {
+            const { geminiInvoiceService } = require("../services/ai/geminiInvoiceService");
+            aiResult = await geminiInvoiceService.analyzeInvoice(file.buffer, file.mimetype);
+        }
+
+        if (!aiResult) {
+            return res.status(500).json({ error: "AI Analysis failed to extract data" });
+        }
+
+        // 2. Map AI result to our internal structure
+        // Note: Mapping might vary based on N8N's specific output, 
+        // Gemini's output is structured by our prompt.
+        const expenseItem = {
+            date: aiResult.date ? new Date(aiResult.date) : new Date(),
+            amount: Number(aiResult.total || 0),
+            currency: aiResult.currency || 'PEN',
+            issuer_name: aiResult.issuer?.name || '',
+            tax_id: aiResult.issuer?.taxId || '',
+            description: aiResult.items?.[0]?.description || 'Gasto detectado por IA',
+            items: aiResult.items || [],
+            ai_raw_data: aiResult
+        };
+
+        // 2b. Store the file in database for visualization
+        const FileModel = getTenantFileModel(req.tenantDB);
+        const base64Data = file.buffer.toString('base64');
+        const dataUrl = `data:${file.mimetype};base64,${base64Data}`;
+        
+        const fileDoc = await new FileModel({
+            fileName: file.originalname,
+            mimeType: file.mimetype,
+            size: file.size,
+            base64Url: dataUrl
+        }).save();
+        
+        const fileUrl = `/api/files/${fileDoc._id}`;
+
+        // 3. Update the CashRequest document incrementally
+        // We set status to 'expense_draft' if it was 'paid'
+        if (cr.status === 'paid') cr.status = 'expense_draft';
+
+        cr.expense_items = cr.expense_items || [];
+        cr.expense_items.push(expenseItem as any);
+
+        // Add the file URL to the visual list
+        cr.expense_files = cr.expense_files || [];
+        cr.expense_files.push(fileUrl);
+
+        // Optionally update total_spent automatically
+        const newTotal = cr.expense_items.reduce((sum, item) => sum + (item.amount || 0), 0);
+        cr.total_spent = newTotal;
+
+        await cr.save();
+
+        console.log(`✅ Item de gasto añadido a CR ${id} via ${method}. Nuevo total: ${newTotal}`);
+
+        return res.json({
+            message: "Gasto procesado y añadido correctamente",
+            addedItem: expenseItem,
+            fileUrl,
+            total_spent: newTotal,
+            expense_files: cr.expense_files,
+            status: cr.status
+        });
+
+    } catch (err: any) {
+        console.error("Error in addExpenseItemAI:", err);
+        return res.status(500).json({ error: err.message || "Internal error processing automated expense" });
     }
 };
 

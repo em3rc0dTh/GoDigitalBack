@@ -16,6 +16,7 @@ import * as PaymentRequestController from "../controllers/paymentRequest";
 import * as BusinessUnitController from "../controllers/businessUnit";
 import * as CashRequestController from "../controllers/cashRequest";
 import * as FileController from "../controllers/file";
+import multer from "multer";
 
 const router = Router();
 
@@ -130,6 +131,7 @@ router.put("/cash-requests/:id/approve",      CashRequestController.approveCashR
 router.put("/cash-requests/:id/authorize",    CashRequestController.authorizeCashRequest);
 router.put("/cash-requests/:id/pay",          CashRequestController.payCashRequest);
 router.put("/cash-requests/:id/submit-expense", CashRequestController.submitExpense);
+router.post("/cash-requests/:id/add-expense-ai", multer({ storage: multer.memoryStorage() }).single('file'), CashRequestController.addExpenseItemAI);
 router.put("/cash-requests/:id/review",       CashRequestController.reviewCashRequest);
 router.put("/cash-requests/:id/close",        CashRequestController.closeCashRequest);
 router.put("/cash-requests/:id/reject",       CashRequestController.rejectCashRequest);
