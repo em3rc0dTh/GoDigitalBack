@@ -101,3 +101,22 @@ export async function tenantContext(req: Request, res: Response, next: NextFunct
         return res.status(401).json({ error: "Invalid or expired token" });
     }
 }
+
+export async function authContext(req: Request, res: Response, next: NextFunction) {
+    try {
+        const token = req.cookies.session_token || req.headers.authorization?.replace("Bearer ", "");
+
+        if (!token) {
+            return res.status(401).json({ error: "No authentication token" });
+        }
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+        req.userId = decoded.userId;
+        req.tenantId = decoded.tenantId;
+        req.role = decoded.role;
+        next();
+    } catch (err) {
+        console.error("Auth context error:", err);
+        return res.status(401).json({ error: "Invalid or expired token" });
+    }
+}

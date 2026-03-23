@@ -10,6 +10,8 @@ import gmailRoutes from "./routes/gmail"; // ✅ IMPORTANTE
 import n8nRoutes from "./routes/n8n";
 import odooRoutes from "./routes/odooRoutes";
 
+import { schedulerService } from "./services/schedulerService";
+
 const app = express();
 const PORT = process.env.PORT || 4000;
 
@@ -45,6 +47,9 @@ app.get("/", (_, res) => {
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+
+    // ── Iniciar Scheduler (Cron Tasks) ──────────────────────────────────────
+    schedulerService.start();
 
     // ── Estado de integración Temporal ───────────────────────────────────────
     if (process.env.USE_TEMPORAL === 'true') {

@@ -3,7 +3,7 @@ import { Router } from "express";
 import * as AccountController from "../controllers/account";
 import * as TxController from "../controllers/transaction";
 import * as AuthController from "../controllers/auth";
-import { tenantContext } from "../middleware/tenantContext";
+import { tenantContext, authContext } from "../middleware/tenantContext";
 import * as RolesController from "../controllers/roles";
 import * as PermissionsController from "../controllers/permissions";
 import statementRoutes from "./statement";
@@ -16,6 +16,7 @@ import * as PaymentRequestController from "../controllers/paymentRequest";
 import * as BusinessUnitController from "../controllers/businessUnit";
 import * as CashRequestController from "../controllers/cashRequest";
 import * as FileController from "../controllers/file";
+import * as MemberController from "../controllers/member";
 import multer from "multer";
 
 const router = Router();
@@ -32,6 +33,8 @@ router.post("/logout", AuthController.logoutHandler);
 router.get("/logout", AuthController.logoutHandler);
 router.post("/verify-email", AuthController.verifyEmailHandler);
 router.post("/auth/resend-verification", AuthController.resendVerificationHandler);
+router.get("/auth/workspaces", authContext, AuthController.listWorkspacesHandler);
+router.post("/auth/select-workspace", authContext, AuthController.selectWorkspaceHandler);
 
 // Forms
 router.use("/forms", formRoutes);
@@ -57,6 +60,12 @@ router.post("/tenants/:id/provision", AuthController.provisionDatabaseHandler);
 router.get("/tenant-details/:detailId", AuthController.getTenantDetailHandler);
 router.put("/tenant-details/:detailId", AuthController.updateTenantDetailHandler);
 router.get("/tenants/details/:id", AuthController.getTenantsListWithDetails);
+
+// Members Management
+router.get("/members", MemberController.listMembers);
+router.post("/members/invite", MemberController.inviteMember);
+router.put("/members/:id", MemberController.updateMember);
+router.delete("/members/:id", MemberController.removeMember);
 
 router.get("/accounts", AccountController.getAccounts);
 router.post("/accounts", AccountController.createAccount);

@@ -93,30 +93,43 @@ export const signupHandler = async (req: Request, res: Response) => {
     const Tenant = await getTenantModel();
     const Member = await getMemberModel();
 
-    if (await User.findOne({ email })) return res.status(409).json({ error: "User already exists" });
+    const existingUser = await User.findOne({ email });
+    if (existingUser && existingUser.status !== "invited") {
+       return res.status(409).json({ error: "User already exists" });
+    }
+
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+    
+    // Si ya existe pero estaba invitado, lo actualizamos
+    let user;
+    if (existingUser) {
+        existingUser.name = fullName;
+        existingUser.passwordHash = passwordHash;
+        existingUser.status = "active";
+        existingUser.emailVerified = false; // Requiere verificación igual
+        existingUser.emailVerificationToken = uuidv4();
+        await existingUser.save();
+        user = existingUser;
+    } else {
+        user = await User.create({
+            email,
+            passwordHash,
+            name: fullName,
+            isActive: true,
+            status: "active",
+            emailVerified: false,
+            emailVerificationToken: uuidv4()
+        });
+    }
 
     const tenant = await Tenant.create({ name: `Workspace of ${fullName}`, ownerEmail: email, dbList: [] });
-    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-
-    // Generate email verification token
-    const verificationToken = uuidv4();
-
-    const user = await User.create({
-      email,
-      passwordHash,
-      name: fullName,
-      isActive: true,
-      status: "active",
-      emailVerified: false,
-      emailVerificationToken: verificationToken
-    });
 
     await Member.create({
       tenantId: tenant._id, userId: user._id, role: "superadmin", status: "active",
     });
 
     // Send Email Verification Email
-    const verificationLink = `${process.env.FRONTEND_URL || "http://localhost:3000"}/verify-email?token=${verificationToken}`;
+    const verificationLink = `${process.env.FRONTEND_URL || "http://localhost:3000"}/verify-email?token=${user.emailVerificationToken}`;
 
     await sendEmail(
       email,
@@ -1116,6 +1129,77 @@ export async function getTenantsListWithDetails(req: Request, res: Response) {
     });
   }
 }
+
+export const selectWorkspaceHandler = async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.body;
+    const userId = req.userId;
+
+    if (!tenantId) return res.status(400).json({ error: "Tenant ID required" });
+
+    const Member = await getMemberModel();
+    const User = await getUserModel();
+
+    const member = await Member.findOne({ userId: userId, tenantId: tenantId, status: "active" });
+    if (!member) return res.status(403).json({ error: "No access to this workspace" });
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const token = jwt.sign(
+      { userId: user._id.toString(), tenantId: tenantId, email: user.email, fullName: user.name, role: member.role },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    res.cookie("session_token", token, {
+      httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return res.json({ success: true, token, role: member.role });
+  } catch (err: any) {
+    console.error("Select workspace error:", err);
+    return res.status(500).json({ error: "Select workspace failed" });
+  }
+};
+
+export const listWorkspacesHandler = async (req: Request, res: Response) => {
+  try {
+    const User = await getUserModel();
+    const Member = await getMemberModel();
+    const TenantDetail = await getTenantDetailModel();
+
+    const user = await User.findById(req.userId);
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    const members = await Member.find({ userId: user._id, status: "active" }).populate("tenantId");
+
+    const workspaces = await Promise.all(
+      members.map(async (m: any) => {
+        const tenant = m.tenantId;
+        if (!tenant) return null;
+        const details = await TenantDetail.find({ _id: { $in: tenant.dbList } }).select('dbName country entityType');
+        return {
+          tenantId: tenant._id.toString(),
+          name: tenant.name,
+          role: m.role,
+          databases: details.map((d: any) => ({
+            id: d._id.toString(),
+            dbName: d.dbName,
+            country: d.country,
+            entityType: d.entityType,
+          })),
+          hasDatabase: details.length > 0,
+        };
+      })
+    );
+
+    return res.json({ success: true, workspaces: workspaces.filter(Boolean) });
+  } catch (err: any) {
+    console.error("List workspaces error:", err);
+    return res.status(500).json({ error: "Failed to list workspaces" });
+  }
+};
 
 // Helper to generate session
 async function createSessionForUser(user: any, res: Response) {
