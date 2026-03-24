@@ -1,6 +1,7 @@
 
 import { Request, Response } from "express";
 import { statementService } from "../services/statement";
+import { getTransactionRawPDFModel } from "../models/tenant/TransactionRawPDF";
 import multer from "multer";
 
 // Configure Multer (Memory Storage)
@@ -53,5 +54,68 @@ export const uploadStatement = async (req: Request, res: Response) => {
             error: "Failed to process statement",
             details: err.message
         });
+    }
+};
+
+/**
+ * List all processed statements (merged by fileId)
+ * GET /api/statements
+ */
+export const getStatements = async (req: Request, res: Response) => {
+    try {
+        const { tenantId, tenantDetailId } = req;
+        if (!tenantId || !tenantDetailId) {
+            return res.status(401).json({ error: "Tenant context required" });
+        }
+
+        const TransactionRawPDF = await getTransactionRawPDFModel(tenantId, tenantDetailId);
+
+        // Aggregate by fileId to get unique statements
+        // TransactionRawPDF uses 'Transaction_Raw_C_PDF' collection which is tenant detail specific
+        const statements = await TransactionRawPDF.aggregate([
+            {
+                $group: {
+                    _id: "$fileId",
+                    fileName: { $first: "$fileName" },
+                    createdAt: { $first: "$createdAt" },
+                    transactionCount: { $sum: 1 },
+                    bank: { $first: "$routing.bank" },
+                    accountNumber: { $first: "$routing.accountNumber" }
+                }
+            },
+            { $sort: { createdAt: -1 } }
+        ]);
+
+        return res.json({ success: true, count: statements.length, statements });
+    } catch (err: any) {
+        console.error("Get statements error:", err);
+        return res.status(500).json({ error: "Failed to fetch statements", details: err.message });
+    }
+};
+
+/**
+ * Get all transactions for a specific statement (fileId)
+ * GET /api/statements/:fileId
+ */
+export const getStatementTransactions = async (req: Request, res: Response) => {
+    try {
+        const { tenantId, tenantDetailId } = req;
+        const { fileId } = req.params;
+
+        if (!tenantId || !tenantDetailId) {
+            return res.status(401).json({ error: "Tenant context required" });
+        }
+
+        const TransactionRawPDF = await getTransactionRawPDFModel(tenantId, tenantDetailId);
+        const transactions = await TransactionRawPDF.find({ fileId }).sort({ operation_date: 1 });
+
+        return res.json({ 
+            success: true, 
+            count: transactions.length,
+            transactions 
+        });
+    } catch (err: any) {
+        console.error("Get statement transactions error:", err);
+        return res.status(500).json({ error: "Failed to fetch transactions", details: err.message });
     }
 };

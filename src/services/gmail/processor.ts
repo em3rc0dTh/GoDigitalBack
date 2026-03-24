@@ -152,14 +152,21 @@ export async function processMessage(
     }
   }
 
-  //TODO: Change Gemini to transformer
-  const { data } = await axios.post(API_URL, {
-    html: content.html,
-    provider: "n8n"
-  });
+  let transactionVariablesIA = null;
+  let transactionTypeIA = null;
 
-  const transactionVariablesIA = data.transactionVariables || null;
-  const transactionTypeIA = data.transactionType || null;
+  try {
+    const { data } = await axios.post(API_URL, {
+      html: content.html,
+      provider: "n8n"
+    });
+
+    transactionVariablesIA = data.transactionVariables || null;
+    transactionTypeIA = data.transactionType || null;
+  } catch (iaError: any) {
+    console.error(`⚠️ IA Agent call failed for email ${gmailId}:`, iaError.message);
+    // Continuamos sin datos de IA para no romper el flujo
+  }
 
   // 🔍 VALIDACIÓN DE CUENTAS (Layaway / Suffix Match)
   if (transactionVariablesIA && routing?.entityId) {

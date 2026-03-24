@@ -593,20 +593,30 @@ router.post("/fetch-emails", async (req, res) => {
         const results = [];
 
         for (const msg of messages) {
-            await processMessage(
-                gmail,
-                msg.id!,
-                msg.threadId || "",
-                watch.historyId || "",
-                forcedRouting,
-                config.entityId // 🆕 Restringir matchmaking a esta entidad
-            );
+            try {
+                await processMessage(
+                    gmail,
+                    msg.id!,
+                    msg.threadId || "",
+                    watch.historyId || "",
+                    forcedRouting,
+                    config.entityId // 🆕 Restringir matchmaking a esta entidad
+                );
 
-            results.push({
-                gmailId: msg.id,
-                from: senders, // Variable removed
-                status: "stored"
-            });
+                results.push({
+                    gmailId: msg.id,
+                    from: senders,
+                    status: "stored"
+                });
+            } catch (msgError: any) {
+                console.error(`❌ Error processing message ${msg.id}:`, msgError.message);
+                results.push({
+                    gmailId: msg.id,
+                    from: senders,
+                    status: "error",
+                    error: msgError.message
+                });
+            }
         }
 
         res.json({
