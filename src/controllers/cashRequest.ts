@@ -28,6 +28,9 @@ export const getCashRequests = async (req: Request, res: Response) => {
         if (req.query.status) filter.status = req.query.status;
         if (req.query.mine === 'true' && req.userId)
             filter.created_by = new mongoose.Types.ObjectId(req.userId);
+        else if (req.role === 'standard' && req.userId)
+            // Standard users only see their own requests
+            filter.created_by = new mongoose.Types.ObjectId(req.userId);
 
         const docs = await CashRequest.find(filter)
             .populate('project_id', 'name')

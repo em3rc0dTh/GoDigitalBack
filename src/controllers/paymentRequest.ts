@@ -29,6 +29,9 @@ export const getPaymentRequests = async (req: Request, res: Response) => {
         }
         if (req.query.mine === 'true' && req.userId) {
             filter.created_by = new mongoose.Types.ObjectId(req.userId);
+        } else if (req.role === 'standard' && req.userId) {
+            // Standard users only see their own requests
+            filter.created_by = new mongoose.Types.ObjectId(req.userId);
         }
         const Project = getProjectModel(req.tenantDB);
         const docs = await PaymentRequest.find(filter)

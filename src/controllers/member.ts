@@ -75,11 +75,20 @@ export const inviteMember = async (req: Request, res: Response) => {
             return res.status(400).json({ error: "User is already a member of this workspace" });
         }
 
+        const VALID_ROLES = ["superadmin", "admin", "treasurer", "standard"];
+        const normalizedRole = role ? role.toLowerCase().trim() : "estandar";
+
+        if (!VALID_ROLES.includes(normalizedRole)) {
+            return res.status(400).json({ 
+                error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}` 
+            });
+        }
+
         // 3. Create membership
         const newMember = await Member.create({
             tenantId,
             userId: user._id,
-            role: role || "user",
+            role: normalizedRole,
             status: "active", // Membership itself is active (linked)
             invitedBy: req.userId
         });
@@ -133,7 +142,16 @@ export const updateMember = async (req: Request, res: Response) => {
         // Prevent downgrading the last superadmin if we want to be safe
         // (Implementation omitted for brevity but recommended)
 
-        if (role) member.role = role;
+        if (role) {
+            const normalizedRole = role.toLowerCase().trim();
+            const VALID_ROLES = ["superadmin", "admin", "treasurer", "standard"];
+            if (!VALID_ROLES.includes(normalizedRole)) {
+                return res.status(400).json({ 
+                    error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}` 
+                });
+            }
+            member.role = normalizedRole;
+        }
         if (status) member.status = status;
 
         await member.save();
