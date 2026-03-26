@@ -71,6 +71,41 @@ export class N8NService {
         }
     }
 
+    /**
+     * Generic document analysis via N8N.
+     */
+    async analyzeDocument(file: Express.Multer.File, source: string, type: string) {
+        const n8nWebhookUrl = process.env.N8N_WEBHOOK_INVENTORY || process.env.N8N_WEBHOOK_READ_INVOICE;
+
+        if (!n8nWebhookUrl) {
+            throw new Error("N8N Webhook for inventory is not defined");
+        }
+
+        try {
+            const formData = new FormData();
+            formData.append("file", file.buffer, {
+                filename: file.originalname,
+                contentType: file.mimetype,
+            });
+            formData.append("source", source);
+            formData.append("type", type);
+
+            console.log(`Sending Document [${source}/${type}] ${file.originalname} to N8N: ${n8nWebhookUrl}`);
+
+            const response = await axios.post(n8nWebhookUrl, formData, {
+                headers: {
+                    ...formData.getHeaders(),
+                },
+            });
+
+            console.log("N8N Inventory Response:", response.data);
+            return response.data;
+        } catch (error: any) {
+            console.error("Error sending file to N8N (Inventory):", error.message);
+            throw new Error(`Failed to process document in N8N: ${error.message}`);
+        }
+    }
+
     async savePendantTicket(tenantDetailId: string, ticketId: string) {
         const TenantDetail = await getTenantDetailModel();
 

@@ -59,9 +59,10 @@ export async function tenantContext(req: Request, res: Response, next: NextFunct
             return next(); // Allow request to continue (for provisioning endpoint)
         }
 
-        // Get the detailId from header or use the first one as default
+        // Get the detailId from header or cookie, or use the first one as default
         const detailIdFromHeader = req.headers['x-tenant-detail-id'] as string;
-        let activeDetailId = detailIdFromHeader;
+        const detailIdFromCookie = req.cookies.tenantDetailId;
+        let activeDetailId = detailIdFromHeader || detailIdFromCookie;
 
         // If no specific detail requested, use the first one
         if (!activeDetailId) {

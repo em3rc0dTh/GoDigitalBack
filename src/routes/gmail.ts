@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import * as gmailController from '../controllers/gmail';
+import { authContext } from '../middleware/tenantContext';
+
 
 import {
     validatePubSubToken,
@@ -43,10 +45,13 @@ router.post(
 );
 
 /**
- * Management (TEMPORALMENTE PÚBLICO)
- * 🔓 SIN authenticateToken
+ * Management (LOCKDOWN)
+ * 🔐 Requiere authContext
  */
+router.use(authContext);
+
 router.get(
+
     '/status/:tenantDetailId',
     gmailController.getStatus
 );

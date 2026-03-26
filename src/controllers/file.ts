@@ -38,20 +38,33 @@ export const downloadFile = async (req: Request, res: Response) => {
         if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid ID" });
 
         const doc = await FileModel.findById(id);
-        if (!doc) return res.status(404).json({ error: "File not found" });
+        
+        let targetDoc = doc;
+        if (!targetDoc) {
+            // Check ReceiptInventory if not found in Files
+            const { getReceiptInventoryModel } = await import("../models/tenant/ReceiptInventory");
+            const ReceiptModel = getReceiptInventoryModel(req.tenantDB);
+            targetDoc = await ReceiptModel.findById(id) as any;
+        }
+
+        if (!targetDoc) return res.status(404).json({ error: "File not found" });
 
         // the base64Url looks like data:image/png;base64,iVBOR...
-        const matches = doc.base64Url?.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        const matches = targetDoc.base64Url?.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
         
         if (matches && matches.length === 3) {
             const buffer = Buffer.from(matches[2], 'base64');
             res.setHeader('Content-Type', matches[1]);
-            res.setHeader('Content-Disposition', `inline; filename="${doc.fileName}"`);
+            res.setHeader('Content-Disposition', `inline; filename="${targetDoc.fileName}"`);
             return res.send(buffer);
         }
 
         // fallback if it's just a raw url
-        return res.redirect(doc.base64Url as string);
+        if (targetDoc && targetDoc.base64Url) {
+            return res.redirect(targetDoc.base64Url);
+        }
+        
+        return res.status(404).json({ error: "File source not found" });
     } catch (err: any) {
         console.error("GET /files/:id error:", err);
         return res.status(500).json({ error: "Error downloading file" });

@@ -7,3 +7,11 @@ sonar_log.txt
 /sonar_scanner
 /.scannerwork
 ./scripts
+service-account-key.json
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!nodemon.json
+!service-account-key.json.example
+/uploads

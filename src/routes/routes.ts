@@ -18,6 +18,7 @@ import * as BusinessUnitController from "../controllers/businessUnit";
 import * as CashRequestController from "../controllers/cashRequest";
 import * as FileController from "../controllers/file";
 import * as MemberController from "../controllers/member";
+import * as ReceiptInventoryController from "../controllers/receiptInventory";
 import multer from "multer";
 
 const router = Router();
@@ -153,12 +154,16 @@ router.delete("/cash-requests/:id", checkPermission("payment_req:authorize"), Ca
 
 // Files (Tenant bounded)
 router.post("/files", checkPermission("proof:upload"), FileController.uploadFile);
-router.get("/files/:id", authContext, FileController.downloadFile);
+router.get("/files/:id", FileController.downloadFile);
 
 // Statements
 router.use("/statements", statementRoutes); // Interior routes are controlled in statement.ts
 
 // Reconcile 
 router.use("/reconcile/:tenantDetailId", checkPermission("reconcile:manage"), reconcileRoutes);
+
+// Receipt Inventory
+router.post("/receipts/upload", checkPermission("proof:upload"), multer({ storage: multer.memoryStorage() }).single('file'), ReceiptInventoryController.uploadReceipt);
+router.get("/receipts", checkPermission("proof:review"), ReceiptInventoryController.getReceipts);
 
 export default router;

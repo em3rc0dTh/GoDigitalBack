@@ -6,14 +6,34 @@ dotenv.config();
 
 import { connectDB } from "./config/db";
 import routes from "./routes/routes";
-import gmailRoutes from "./routes/gmail"; // ✅ IMPORTANTE
+import gmailRoutes from "./routes/gmail";
 import n8nRoutes from "./routes/n8n";
 import odooRoutes from "./routes/odooRoutes";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 
 import { schedulerService } from "./services/schedulerService";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+// Security Middleware
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    message: { error: "Too many requests from this IP, please try again after 15 minutes" },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+if (!process.env.JWT_SECRET) {
+    console.error("❌ CRITICAL: JWT_SECRET is not defined in .env");
+    process.exit(1);
+}
 
 app.use(cors({
     origin: process.env.API_URL || "http://localhost:3000",
@@ -22,7 +42,11 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
+// Apply rate limiter to auth routes
+app.use("/api/auth", authLimiter);
+
 connectDB();
+
 
 /**
  * 🔓 GMAIL (SIN AUTH, SIN TENANT CONTEXT)
