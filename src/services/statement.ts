@@ -17,11 +17,11 @@ export class StatementService {
     private static processingQueue: Promise<any> = Promise.resolve();
 
     private fallbackModels = [
-        "gemini-1.5-flash",
-        "gemini-3.1-flash-lite",
-        "gemini-2.5-flash-lite",
-        "gemini-3-flash",
-        "gemini-2.0-flash"
+        "gemini-3.1-flash-lite", // 500 RPD
+        "gemini-3-flash",        // 20 RPD
+        "gemini-2.5-flash",      // 20 RPD
+        "gemini-2.5-flash-lite", // 20 RPD
+        "gemini-2.0-flash"       // Original
     ];
     private currentModelIndex = 0;
 
@@ -265,6 +265,13 @@ ${text}
                         this.currentModelIndex = (this.currentModelIndex + 1) % this.fallbackModels.length;
                         return await tryWithModel(this.fallbackModels[this.currentModelIndex], 3, modelsTried + 1);
                     }
+                }
+
+                // Si el modelo no existe o ya no es soportado (404), saltar directamente
+                if (err?.message?.includes("404") || err?.status === 404) {
+                    console.warn(`[No Soportado] El modelo ${modelName} devolvió 404. Saltando al siguiente...`);
+                    this.currentModelIndex = (this.currentModelIndex + 1) % this.fallbackModels.length;
+                    return await tryWithModel(this.fallbackModels[this.currentModelIndex], 3, modelsTried + 1);
                 }
                 
                 // Si es un error diferente (JSON inválido, 500, etc) o no quedan reintentos
