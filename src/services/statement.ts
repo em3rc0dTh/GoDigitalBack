@@ -16,6 +16,15 @@ export class StatementService {
     // Cola de ejecución global para asegurar que NUNCA se envíen dos peticiones simultáneas
     private static processingQueue: Promise<any> = Promise.resolve();
 
+    private fallbackModels = [
+        "gemini-1.5-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-2.5-flash-lite",
+        "gemini-3-flash",
+        "gemini-2.0-flash"
+    ];
+    private currentModelIndex = 0;
+
     constructor() {
         this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
     }
@@ -197,54 +206,77 @@ ${text}
 """
 `;
 
-        try {
-            const model = this.genAI.getGenerativeModel({
-                model: "gemini-2.0-flash",
-                generationConfig: { responseMimeType: "application/json" }
-            });
-
-            const result = await model.generateContent(prompt);
-            const content = result.response.text();
-
-            if (!content) throw new Error("No content from Gemini");
-
-            let parsed = JSON.parse(content);
-            let transactions = Array.isArray(parsed.transactions) ? parsed.transactions : [];
-
-            // Deduplicar
-            const uniqueTransactions: any[] = [];
-            const seenTransactions = new Set();
-            for (const tx of transactions) {
-                const txHash = `${tx.operation_date}|${tx.amount}|${tx.movement}|${tx.balance}`;
-                if (!seenTransactions.has(txHash)) {
-                    seenTransactions.add(txHash);
-                    uniqueTransactions.push(tx);
-                }
+        const tryWithModel = async (modelName: string, retries: number, modelsTried: number = 0): Promise<any> => {
+            if (modelsTried >= this.fallbackModels.length) {
+                throw new Error("Cuota diaria agotada en TODOS los modelos de respaldo. Usa una API Key de pago.");
             }
 
-            return {
-                accountNumber: parsed.accountNumber ?? null,
-                transactions: uniqueTransactions
-            };
+            try {
+                console.log(`[AI] Intentando extraer datos usando el modelo: ${modelName}`);
+                const model = this.genAI.getGenerativeModel({
+                    model: modelName,
+                    generationConfig: { responseMimeType: "application/json" }
+                });
 
-        } catch (err: any) {
-            console.error("Gemini API Error:", err.message);
+                const result = await model.generateContent(prompt);
+                const content = result.response.text();
 
-            if (err?.message?.includes("429") || err?.status === 429) {
-                // Si es cuota diaria agotada (Quota exceeded), no reintentar para no bloquear el hilo
-                if (err?.message?.includes("Quota exceeded") && !err?.message?.includes("minute")) {
-                    throw new Error("Cuota diaria de Gemini agotada. Intenta de nuevo mañana o usa una API Key de pago.");
+                if (!content) throw new Error("No content from Gemini");
+
+                let parsed = JSON.parse(content);
+                let transactions = Array.isArray(parsed.transactions) ? parsed.transactions : [];
+
+                // Deduplicar
+                const uniqueTransactions: any[] = [];
+                const seenTransactions = new Set();
+                for (const tx of transactions) {
+                    const txHash = `${tx.operation_date}|${tx.amount}|${tx.movement}|${tx.balance}`;
+                    if (!seenTransactions.has(txHash)) {
+                        seenTransactions.add(txHash);
+                        uniqueTransactions.push(tx);
+                    }
                 }
 
-                if (retriesLeft > 0) {
-                    const delay = [60000, 30000, 15000][retriesLeft - 1];
-                    console.warn(`[429] Reintentando en ${delay/1000}s...`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    return await this.extractTransactionsWithAI(text, includeAccountNumber, retriesLeft - 1);
+                return {
+                    accountNumber: parsed.accountNumber ?? null,
+                    transactions: uniqueTransactions
+                };
+
+            } catch (err: any) {
+                console.error(`[AI Error en ${modelName}]:`, err.message);
+
+                if (err?.message?.includes("429") || err?.status === 429) {
+                    // Detección de Cuota Diaria (Quota exceeded)
+                    if (err?.message?.includes("Quota") && !err?.message?.includes("minute")) {
+                        console.warn(`[Cuota Diaria] ${modelName} agotado. Saltando al siguiente modelo...`);
+                        this.currentModelIndex = (this.currentModelIndex + 1) % this.fallbackModels.length;
+                        return await tryWithModel(this.fallbackModels[this.currentModelIndex], 3, modelsTried + 1);
+                    }
+
+                    // Detección de Límite por Minuto (RPM)
+                    if (retries > 0) {
+                        const delay = [40000, 20000, 10000][retries - 1] || 15000;
+                        console.warn(`[RPM Limit] ${modelName} ocupado. Esperando ${delay/1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        return await tryWithModel(modelName, retries - 1, modelsTried);
+                    } else {
+                        // Si nos quedamos sin reintentos de RPM, mejor probar con otro modelo
+                        console.warn(`[RPM Agotado] No se pudo con ${modelName} tras reintentos. Saltando al siguiente...`);
+                        this.currentModelIndex = (this.currentModelIndex + 1) % this.fallbackModels.length;
+                        return await tryWithModel(this.fallbackModels[this.currentModelIndex], 3, modelsTried + 1);
+                    }
                 }
+                
+                // Si es un error diferente (JSON inválido, 500, etc) o no quedan reintentos
+                if (retries > 0) {
+                     console.warn(`[Fallback Error] Reintentando ${modelName}...`);
+                     return await tryWithModel(modelName, retries - 1, modelsTried);
+                }
+                throw err;
             }
-            throw err;
-        }
+        };
+
+        return await tryWithModel(this.fallbackModels[this.currentModelIndex], retriesLeft);
     }
 
     private async saveTransactions(
