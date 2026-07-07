@@ -11,7 +11,7 @@ router.get("/", getStatements);
 router.get("/:fileId", getStatementTransactions);
 
 // POST /api/statements/upload - Process a new PDF statement
-// Requires 'file' field in multipart/form-data
-router.post("/upload", upload.single("file"), uploadStatement);
+// Accepts any file field names (e.g. 'file' or 'files')
+router.post("/upload", upload.any(), uploadStatement);
 
 export default router;

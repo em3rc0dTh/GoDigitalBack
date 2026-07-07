@@ -1,0 +1,413 @@
+--- INPUT TEXT ---
+ESTADO DE CUENTA
+CUENTA SIMPLE SOLES
+898-3481675032
+DEL 31 DE DICIEMBRE DEL 2025 AL 30 DE ENERO DEL 2026
+Merino Cordova Eduardo Farid
+DNI 72196046
+Tu cuenta fue aperturada el 09/09/2025
+DETALLE DE MOVIMIENTOS
+Fecha Concepto Ingresos Gastos Saldo Contable
+EMPEZASTE ENERO CON 4,166.15
+05/01/2026 BRITANICO-DER E -305.00 3,861.15
+27/01/2026 I-BANC -600.00 3,261.15
+28/01/2026 Transf EDUAR +80.00 3,341.15
+28/01/2026 Transf EDUAR +500.00 3,841.15
+28/01/2026 I-BANC -580.00 3,261.15
+28/01/2026 ITF I-BANC E -780.00 2,481.15
+SALDO CONTABLE AL 30/01 +580.00 -2,265.00 2,481.15
+Recuerda
+› Realiza GRATIS tus consultas, pagos y transferencias bancarias/interbancarias las 24 horas del día,
+desde nuestros canales digitales.
+› Tienes operaciones GRATIS e ILIMITADAS en cajeros Global Net a nivel nacional.
+› Ahorra con tu Alcancía Virtual, es fácil, inmediato y seguro desde tu Interbank APP. Personaliza tus
+ahorros con categorías según tus metas.
+En Interbank nos preocupamos por tu seguridad.
+Recuerda que nunca te contactaremos por cualquier medio para solicitarte
+datos sensibles de tu tarjeta, claves o cuentas.
+Si recibes este tipo de comunicaciones, por favor no respondas y repórtalas.
+
+-- 1 of 2 --
+
+ESTADO DE CUENTA
+CUENTA SIMPLE SOLES
+DEL 1 AL 30 DE NOVIEMBRE
+100-7000590278
+María Vara de Gamarra
+DNI 42097780
+Tu cuenta fue aperturada el 10/05/2010
+DETALLE DE MOVIMIENTOS
+Fecha 	Concepto 	Ingresos Gastos
+EMPEZASTE OCTUBRE CON
+SALDO CONTABLE AL 29/10 	-472.70	+2,670.20 	6,890.79
+4,560.41
+03/10/2021
+03/10/2021
+03/10/2021
+03/10/2021
+03/10/2021
+03/10/2021
+03/10/2021
+03/10/2021
+03/10/2021
+03/10/2021
+03/10/2021
+03/10/2021
+-47.20
+-47.20
+-47.20
+-47.20
+-47.20
+-47.20
+-47.20
+-47.20
+-47.20
+-47.20
+4,520.30
+4,545.40
+4,545.40
+4,545.40
+6,890.79
+6,890.79
+6,890.79
+6,890.79
+6,890.79
+6,890.79
+6,890.79
+6,890.79
++27.20
++2,650.20
+Transf interbancaria
+Transf PLIN
+Pago mi TC
+Pago ventanilla Centro Cívico
+Planilla
+TRANSF. WEB/APP
+Transf PLIN
+TRANSF. WEB/APP
+TRANSF. WEB/APP
+TRANSF. WEB/APP
+TRANSF. WEB/APP
+TRANSF. WEB/APP
+Saldo
+Contable
+› Realiza GRATIS tus consultas, pagos y transferencias bancarias/interbancarias las 24 horas del día,
+desde nuestros canales digitales.
+› Tienes operaciones GRATIS e ILIMITADAS en cajeros Global Net a nivel nacional.
+› Ahorra con tu Alcancía Virtual, es fácil, inmediato y seguro desde tu Interbank APP. Personaliza tus
+ahorros con categorías según tus metas.
+Recuerda
+En Interbank nos preocupamos por tu seguridad.
+Recuerda que nunca te contactaremos por cualquier medio para solicitarte datos
+sensibles de tu tarjeta, claves o cuentas.
+Si recibes este tipo de comunicaciones, por favor no respondas y repórtalas.
+Te ayudamos a conocer
+tu Estado de Cuenta:
+1
+2
+Este es el CICLO DE CONSUMO. Te
+mostramos los movimientos realizados
+entre estas fechas (fecha de inicio y fecha
+de cierre).
+Este es tu SALDO CONTABLE. Se calcula
+en base a tu saldo inicial, sumando tus
+ingresos y gastos diarios realizados.
+Recuerda que este Estado de Cuenta no
+incluye:
+›Las compras o depósitos pendientes de
+procesar, los cuales pueden tomar entre
+48 horas y 10 días útiles dependiendo
+del establecimiento.
+›Tus ahorros e intereses ganados con tu
+Alcancía Virtual. Puedes revisarlos en
+Interbank APP.
+1
+2
+Conoce más sobre tu Estado
+de Cuenta y beneficios aquí
+
+-- 2 of 2 --
+
+--- OUTPUT CONTENT ---
+[
+  {
+    "accountNumber": "898-3481675032",
+    "transactions": [
+      {
+        "fecha_hora_raw": "05/01/2026",
+        "operation_date": "05/01/2026",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "BRITANICO-DER E",
+        "channel": null,
+        "amount": -305.00,
+        "balance": 3861.15,
+        "currency_raw": null,
+        "monto": 305.00,
+        "currency": "PEN",
+        "source_account": "898-3481675032",
+        "destination_account": "BRITANICO-DER E"
+      },
+      {
+        "fecha_hora_raw": "27/01/2026",
+        "operation_date": "27/01/2026",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "I-BANC",
+        "channel": null,
+        "amount": -600.00,
+        "balance": 3261.15,
+        "currency_raw": null,
+        "monto": 600.00,
+        "currency": "PEN",
+        "source_account": "898-3481675032",
+        "destination_account": "I-BANC"
+      },
+      {
+        "fecha_hora_raw": "28/01/2026",
+        "operation_date": "28/01/2026",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "Transf EDUAR",
+        "channel": null,
+        "amount": 80.00,
+        "balance": 3341.15,
+        "currency_raw": null,
+        "monto": 80.00,
+        "currency": "PEN",
+        "source_account": "Transf EDUAR",
+        "destination_account": "898-3481675032"
+      },
+      {
+        "fecha_hora_raw": "28/01/2026",
+        "operation_date": "28/01/2026",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "Transf EDUAR",
+        "channel": null,
+        "amount": 500.00,
+        "balance": 3841.15,
+        "currency_raw": null,
+        "monto": 500.00,
+        "currency": "PEN",
+        "source_account": "Transf EDUAR",
+        "destination_account": "898-3481675032"
+      },
+      {
+        "fecha_hora_raw": "28/01/2026",
+        "operation_date": "28/01/2026",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "I-BANC",
+        "channel": null,
+        "amount": -580.00,
+        "balance": 3261.15,
+        "currency_raw": null,
+        "monto": 580.00,
+        "currency": "PEN",
+        "source_account": "898-3481675032",
+        "destination_account": "I-BANC"
+      },
+      {
+        "fecha_hora_raw": "28/01/2026",
+        "operation_date": "28/01/2026",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "ITF I-BANC E",
+        "channel": null,
+        "amount": -780.00,
+        "balance": 2481.15,
+        "currency_raw": null,
+        "monto": 780.00,
+        "currency": "PEN",
+        "source_account": "898-3481675032",
+        "destination_account": "ITF I-BANC E"
+      }
+    ]
+  },
+  {
+    "accountNumber": "100-7000590278",
+    "transactions": [
+      {
+        "fecha_hora_raw": "03/10/2021",
+        "operation_date": "03/10/2021",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "Transf interbancaria",
+        "channel": null,
+        "amount": 27.20,
+        "balance": 4520.30,
+        "currency_raw": null,
+        "monto": 27.20,
+        "currency": "PEN",
+        "source_account": "Transf interbancaria",
+        "destination_account": "100-7000590278"
+      },
+      {
+        "fecha_hora_raw": "03/10/2021",
+        "operation_date": "03/10/2021",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "Transf PLIN",
+        "channel": null,
+        "amount": 2650.20,
+        "balance": 4545.40,
+        "currency_raw": null,
+        "monto": 2650.20,
+        "currency": "PEN",
+        "source_account": "Transf PLIN",
+        "destination_account": "100-7000590278"
+      },
+      {
+        "fecha_hora_raw": "03/10/2021",
+        "operation_date": "03/10/2021",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "Pago mi TC",
+        "channel": null,
+        "amount": -47.20,
+        "balance": 4545.40,
+        "currency_raw": null,
+        "monto": 47.20,
+        "currency": "PEN",
+        "source_account": "100-7000590278",
+        "destination_account": "Pago mi TC"
+      },
+      {
+        "fecha_hora_raw": "03/10/2021",
+        "operation_date": "03/10/2021",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "Pago ventanilla Centro Cívico",
+        "channel": null,
+        "amount": -47.20,
+        "balance": 4545.40,
+        "currency_raw": null,
+        "monto": 47.20,
+        "currency": "PEN",
+        "source_account": "100-7000590278",
+        "destination_account": "Pago ventanilla Centro Cívico"
+      },
+      {
+        "fecha_hora_raw": "03/10/2021",
+        "operation_date": "03/10/2021",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "Planilla",
+        "channel": null,
+        "amount": -47.20,
+        "balance": 6890.79,
+        "currency_raw": null,
+        "monto": 47.20,
+        "currency": "PEN",
+        "source_account": "100-7000590278",
+        "destination_account": "Planilla"
+      },
+      {
+        "fecha_hora_raw": "03/10/2021",
+        "operation_date": "03/10/2021",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "TRANSF. WEB/APP",
+        "channel": null,
+        "amount": -47.20,
+        "balance": 6890.79,
+        "currency_raw": null,
+        "monto": 47.20,
+        "currency": "PEN",
+        "source_account": "100-7000590278",
+        "destination_account": "TRANSF. WEB/APP"
+      },
+      {
+        "fecha_hora_raw": "03/10/2021",
+        "operation_date": "03/10/2021",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "Transf PLIN",
+        "channel": null,
+        "amount": -47.20,
+        "balance": 6890.79,
+        "currency_raw": null,
+        "monto": 47.20,
+        "currency": "PEN",
+        "source_account": "100-7000590278",
+        "destination_account": "Transf PLIN"
+      },
+      {
+        "fecha_hora_raw": "03/10/2021",
+        "operation_date": "03/10/2021",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "TRANSF. WEB/APP",
+        "channel": null,
+        "amount": -47.20,
+        "balance": 6890.79,
+        "currency_raw": null,
+        "monto": 47.20,
+        "currency": "PEN",
+        "source_account": "100-7000590278",
+        "destination_account": "TRANSF. WEB/APP"
+      },
+      {
+        "fecha_hora_raw": "03/10/2021",
+        "operation_date": "03/10/2021",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "TRANSF. WEB/APP",
+        "channel": null,
+        "amount": -47.20,
+        "balance": 6890.79,
+        "currency_raw": null,
+        "monto": 47.20,
+        "currency": "PEN",
+        "source_account": "100-7000590278",
+        "destination_account": "TRANSF. WEB/APP"
+      },
+      {
+        "fecha_hora_raw": "03/10/2021",
+        "operation_date": "03/10/2021",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "TRANSF. WEB/APP",
+        "channel": null,
+        "amount": -47.20,
+        "balance": 6890.79,
+        "currency_raw": null,
+        "monto": 47.20,
+        "currency": "PEN",
+        "source_account": "100-7000590278",
+        "destination_account": "TRANSF. WEB/APP"
+      },
+      {
+        "fecha_hora_raw": "03/10/2021",
+        "operation_date": "03/10/2021",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "TRANSF. WEB/APP",
+        "channel": null,
+        "amount": -47.20,
+        "balance": 6890.79,
+        "currency_raw": null,
+        "monto": 47.20,
+        "currency": "PEN",
+        "source_account": "100-7000590278",
+        "destination_account": "TRANSF. WEB/APP"
+      },
+      {
+        "fecha_hora_raw": "03/10/2021",
+        "operation_date": "03/10/2021",
+        "process_date": null,
+        "operation_number": null,
+        "movement": "TRANSF. WEB/APP",
+        "channel": null,
+        "amount": -47.20,
+        "balance": 6890.79,
+        "currency_raw": null,
+        "monto": 47.20,
+        "currency": "PEN",
+        "source_account": "100-7000590278",
+        "destination_account": "TRANSF. WEB/APP"
+      }
+    ]
+  }
+]

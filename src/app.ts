@@ -13,6 +13,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 
 import { schedulerService } from "./services/schedulerService";
+import "./workers/statementProcessor";
 
 const app = express();
 const PORT = process.env.PORT || 4000;

@@ -42,6 +42,7 @@ export const getEntities = async (req: Request, res: Response) => {
             identifiers: d.identifiers,
             contact: d.contact,
             is_active: d.is_active,
+            bank_accounts: d.bank_accounts,
             createdAt: d.createdAt,
             updatedAt: d.updatedAt
         }));
@@ -100,6 +101,7 @@ export const getProviders = async (req: Request, res: Response) => {
             identifiers: d.identifiers,
             contact: d.contact,
             is_active: d.is_active,
+            bank_accounts: d.bank_accounts,
             createdAt: d.createdAt,
             updatedAt: d.updatedAt
         }));

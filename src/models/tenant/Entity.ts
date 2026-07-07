@@ -13,6 +13,21 @@ export interface EntityContact {
     address?: string;
 }
 
+export interface EntityBankAccount {
+    _id?: mongoose.Types.ObjectId;
+    alias?: string;
+    bank_name: string;
+    currency: string;
+    account_number: string;
+    cci_number?: string;
+    is_official: boolean;
+    third_party_owner?: {
+        name: string;
+        tax_id?: string;
+    };
+    is_active: boolean;
+}
+
 export interface EntityDocument extends Document {
     company_id: string; // owning company
     name: string;       // key, unique within company
@@ -32,6 +47,7 @@ export interface EntityDocument extends Document {
         entity_id: string;
         entity_name: string;
     }[];
+    bank_accounts?: EntityBankAccount[];
     is_active: boolean;
     createdAt: Date;
     updatedAt: Date;
@@ -70,6 +86,19 @@ const EntitySchema = new mongoose.Schema({
     represents: [{
         entity_id: { type: String },
         entity_name: { type: String }
+    }],
+    bank_accounts: [{
+        alias: { type: String },
+        bank_name: { type: String, required: true },
+        currency: { type: String, required: true },
+        account_number: { type: String, required: true },
+        cci_number: { type: String },
+        is_official: { type: Boolean, default: true },
+        third_party_owner: {
+            name: { type: String },
+            tax_id: { type: String }
+        },
+        is_active: { type: Boolean, default: true }
     }],
     is_active: { type: Boolean, default: true }
 }, {

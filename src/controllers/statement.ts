@@ -11,10 +11,13 @@ export const upload = multer({
     limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
+import { getStatementUploadTaskModel } from "../models/tenant/StatementUploadTask";
+
 export const uploadStatement = async (req: Request, res: Response) => {
     try {
-        if (!req.file) {
-            return res.status(400).json({ error: "No file uploaded" });
+        const files = req.files as Express.Multer.File[];
+        if (!files || files.length === 0) {
+            return res.status(400).json({ error: "No files uploaded" });
         }
 
         const { entityId } = req.body;
@@ -22,30 +25,34 @@ export const uploadStatement = async (req: Request, res: Response) => {
             return res.status(400).json({ error: "entityId is required" });
         }
 
-        // Validate PDF type
-        if (req.file.mimetype !== 'application/pdf') {
-            return res.status(400).json({ error: "Only PDF files are allowed" });
-        }
-
         if (!req.tenantId) {
             return res.status(401).json({ error: "Tenant context required" });
         }
 
-        const { transactions, isDuplicate } = await statementService.processPdfStatement(
-            req.file.buffer,
-            req.file.originalname,
+        const tenantId = req.tenantId;
+
+        // Obtain the queue model
+        const StatementUploadTask = await getStatementUploadTaskModel(tenantId, entityId);
+
+        // Prepare the queue items
+        const taskDocs = files.filter(f => f.mimetype === 'application/pdf').map(file => ({
+            tenantId,
             entityId,
-            req.tenantId
-        );
+            fileName: file.originalname,
+            fileBuffer: file.buffer,
+            status: 'pending' as const
+        }));
+
+        if (taskDocs.length === 0) {
+            return res.status(400).json({ error: "No valid PDF files found in upload" });
+        }
+
+        // Insert into database queue
+        await StatementUploadTask.insertMany(taskDocs);
 
         return res.json({
             success: true,
-            message: isDuplicate
-                ? "This file was processed before. Returning existing transactions."
-                : "Statement processed successfully",
-            count: transactions.length,
-            fileId: transactions.length > 0 ? transactions[0].fileId : null,
-            transactions: transactions
+            message: "Statements successfully uploaded and queued for background processing."
         });
 
     } catch (err: any) {
@@ -75,12 +82,24 @@ export const getStatements = async (req: Request, res: Response) => {
         const statements = await TransactionRawPDF.aggregate([
             {
                 $group: {
-                    _id: "$fileId",
+                    _id: { fileId: "$fileId", accountNumber: "$routing.accountNumber" },
+                    fileId: { $first: "$fileId" },
                     fileName: { $first: "$fileName" },
                     createdAt: { $first: "$createdAt" },
                     transactionCount: { $sum: 1 },
                     bank: { $first: "$routing.bank" },
                     accountNumber: { $first: "$routing.accountNumber" }
+                }
+            },
+            {
+                $project: {
+                    _id: "$fileId", // Keep _id as fileId for backward compatibility in the frontend
+                    fileId: 1,
+                    fileName: 1,
+                    createdAt: 1,
+                    transactionCount: 1,
+                    bank: 1,
+                    accountNumber: 1
                 }
             },
             { $sort: { createdAt: -1 } }
@@ -101,13 +120,20 @@ export const getStatementTransactions = async (req: Request, res: Response) => {
     try {
         const { tenantId, tenantDetailId } = req;
         const { fileId } = req.params;
+        const { accountNumber } = req.query;
 
         if (!tenantId || !tenantDetailId) {
             return res.status(401).json({ error: "Tenant context required" });
         }
 
         const TransactionRawPDF = await getTransactionRawPDFModel(tenantId, tenantDetailId);
-        const transactions = await TransactionRawPDF.find({ fileId }).sort({ operation_date: 1 });
+        
+        const filter: any = { fileId };
+        if (accountNumber) {
+            filter['routing.accountNumber'] = accountNumber;
+        }
+
+        const transactions = await TransactionRawPDF.find(filter).sort({ operation_date: 1 });
 
         return res.json({ 
             success: true, 

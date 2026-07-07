@@ -5,6 +5,8 @@ export interface PaymentRequestDocument extends Document {
     purchase_order_id?: mongoose.Types.ObjectId;
     voucher_id?: mongoose.Types.ObjectId;
     provider_id: mongoose.Types.ObjectId;
+    provider_bank_account_id?: mongoose.Types.ObjectId;
+    provider_bank_account_snapshot?: any; // Snapshot of EntityBankAccount
     project_id: mongoose.Types.ObjectId;
     subtotal: number;
     tax: number;
@@ -35,6 +37,8 @@ const PaymentRequestSchema = new mongoose.Schema({
     purchase_order_id: { type: mongoose.Schema.Types.ObjectId, ref: 'PurchaseOrder', required: false },
     voucher_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Voucher', required: false },
     provider_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Entity', required: true },
+    provider_bank_account_id: { type: mongoose.Schema.Types.ObjectId },
+    provider_bank_account_snapshot: { type: mongoose.Schema.Types.Mixed },
     project_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
     subtotal: { type: Number, required: true },
     tax: { type: Number, required: true },

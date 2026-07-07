@@ -36,7 +36,7 @@ export const getPaymentRequests = async (req: Request, res: Response) => {
         const Project = getProjectModel(req.tenantDB);
         const docs = await PaymentRequest.find(filter)
             .populate('purchase_order_id')
-            .populate('provider_id', 'name')
+            .populate('provider_id', 'name bank_accounts')
             .populate('project_id') // Populate full project info
             .populate('debited_bank_account', 'bank_name account_number currency')
             .sort({ createdAt: -1 })
@@ -288,7 +288,8 @@ export const getPaymentRequestById = async (req: Request, res: Response) => {
         const PaymentRequest = getPaymentRequestModel(req.tenantDB);
         const doc = await PaymentRequest.findById(id)
             .populate('purchase_order_id')
-            .populate('provider_id', 'name')
+            .populate('project_id')
+            .populate('provider_id', 'name bank_accounts')
             .populate('debited_bank_account', 'bank_name account_number currency')
             .lean();
 
@@ -557,10 +558,16 @@ export const authorizePaymentRequest = async (req: Request, res: Response) => {
         if (req.body.notes) pr.authorization_notes = req.body.notes;
 
         // Capture Payment Date and Bank Account during Authorization
-        const { payment_date, debited_bank_account } = req.body;
+        const { payment_date, debited_bank_account, provider_bank_account_id, provider_bank_account_snapshot } = req.body;
         if (payment_date) pr.payment_date = new Date(payment_date);
         if (debited_bank_account && mongoose.Types.ObjectId.isValid(debited_bank_account)) {
             pr.debited_bank_account = new mongoose.Types.ObjectId(debited_bank_account);
+        }
+        if (provider_bank_account_id && mongoose.Types.ObjectId.isValid(provider_bank_account_id)) {
+            pr.provider_bank_account_id = new mongoose.Types.ObjectId(provider_bank_account_id);
+        }
+        if (provider_bank_account_snapshot) {
+            pr.provider_bank_account_snapshot = provider_bank_account_snapshot;
         }
 
         await pr.save();
